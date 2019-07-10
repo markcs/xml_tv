@@ -16,7 +16,7 @@ my $chars = join '', keys %map;
 my @CHANNELDATA;
 my @GUIDEDATA;
 
-my ($VERBOSE, $pretty, $NUMDAYS, $REGION, $outputfile, $help) = (0, 0, 1, undef, undef, undef);
+my ($VERBOSE, $pretty, $NUMDAYS, $REGION, $outputfile, $help) = (0, 0, 7, undef, undef, undef);
 GetOptions
 (
 	'verbose'	=> \$VERBOSE,
