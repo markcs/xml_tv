@@ -121,7 +121,6 @@ sub getepg
 	{
 		my $day = nextday($day);
 		my $id;
-		$url = "https://www.yourtv.com.au/api/guide/?format=html&day=today&region=" . $REGION;
 		$url = "https://www.yourtv.com.au/api/guide/?day=" . $day . "&timezone=" . $REGION_TIMEZONE . "&format=json&region=" . $REGION;
 		warn("\nGetting channel program listing for $REGION for $day ($url)...\n") if ($VERBOSE);
 		my $res = $ua->get($url );
@@ -180,7 +179,7 @@ sub getepg
 							$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
 							$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3 $4:$5:00";
 						}
-						warn("\tGetting program data for $id on $day from $url - $GUIDEDATA[$showcount]->{title} at $GUIDEDATA[$showcount]->{start} $showdata->{date}...\n");
+						#warn("\tGetting program data for $id on $day from $url - $GUIDEDATA[$showcount]->{title} at $GUIDEDATA[$showcount]->{start} $showdata->{date}...\n");
 						$showcount++;
 					}
 				}
