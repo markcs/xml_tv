@@ -15,7 +15,7 @@ my $chars = join '', keys %map;
 
 my @CHANNELDATA;
 my @GUIDEDATA;
-
+my $REGION_TIMEZONE;
 my ($VERBOSE, $pretty, $NUMDAYS, $REGION, $outputfile, $help) = (0, 0, 7, undef, undef, undef);
 GetOptions
 (
@@ -46,6 +46,8 @@ for my $tmpregion ( @REGIONS )
 {
 	if ($tmpregion->{id} eq $REGION) {
         $validregion = 1;
+        $REGION_TIMEZONE = $tmpregion->{timezone};
+        $REGION_TIMEZONE =~ s/(\/)/%2F/;
 	}
 }
 die(	  "\n"
@@ -112,45 +114,51 @@ sub getepg
 {
 	my $ua = shift;
 	my $showcount = 0;
-	#foreach my $channel (@CHANNELDATA)
-	#{
-	#	my $id = $channel->{id};
-	#	warn("Getting epg for $channel->{id} - $channel->{name} ...\n") if ($VERBOSE);
-		my $now = time;
-		$now = $now - 86400;
-		my $offset;
-		my $url;
-		for(my $day = 0; $day < $NUMDAYS; $day++)
+
+
+	my $url;
+	for(my $day = 0; $day < $NUMDAYS; $day++)
+	{
+		my $day = nextday($day);
+		my $id;
+		$url = "https://www.yourtv.com.au/api/guide/?format=html&day=today&region=" . $REGION;
+		$url = "https://www.yourtv.com.au/api/guide/?day=" . $day . "&timezone=" . $REGION_TIMEZONE . "&format=json&region=" . $REGION;
+		warn("\nGetting channel program listing for $REGION for $day ($url)...\n") if ($VERBOSE);
+		my $res = $ua->get($url );
+		die("Unable to connect to YourTV for $url.\n") if (!$res->is_success);
+		my $data = $res->content;
+		my $tmpdata;
+		my @tmpjsondata;
+		eval
 		{
-			my $day = nextday($day);
-			my $id;
-			$url = "https://www.yourtv.com.au/api/guide/?format=html&day=today&region=" . $REGION;
-			$url = "https://www.yourtv.com.au/api/guide/?day=" . $day . "&region=" . $REGION;
-			warn("\tGetting programs for $REGION for day $url ...\n") if ($VERBOSE);
-			my $res = $ua->get($url );
-			die("Unable to connect to YourTV for $url.\n") if (!$res->is_success);
-            my @data = split(/\n/,$res->content);
-			foreach my $line (@data)
+			$tmpdata = decode_json($data);
+			1;
+		};
+		$tmpdata = $tmpdata->[0]->{channels};
+		if (defined($tmpdata))
+		{
+			for (my $channelcount = 0; $channelcount < @$tmpdata; $channelcount++)
 			{
-				if ($line =~ /data-channel-number/) {
-					$line =~ s/.*data-channel-number=\"(\d+)\"/$1/;
-					$id = $line.".yourtv.com.au";
-				}
-				if ($line =~ /data-event-id/) {
-					$line =~ s/.*data-event-id=\"(\d+)\">/$1/;
+				next if (!defined($tmpdata->[$channelcount]->{number}));
+				$id = $tmpdata->[$channelcount]->{number}.".yourtv.com.au";
+				my $blocks = $tmpdata->[$channelcount]->{blocks};
+				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
+				{
 					my $showdata;
-					$url = "https://www.yourtv.com.au/api/airings/" . $line;
-					warn("\t\tGetting program data for $id from $url ...\n") if ($VERBOSE);
+					my $airing = $blocks->[$blockcount]->{shows}[0]->{id};
+					$url = "https://www.yourtv.com.au/api/airings/" . $airing;
+					warn("\t\tGetting program data for $id on $day from $url ...\n") if ($VERBOSE);
 					my $res = $ua->get($url);
 					die("Unable to connect to YourTV for $url\n") if (!$res->is_success);
-					eval {
+					eval
+					{
 						$showdata = decode_json($res->content);
 						1;
 					};
 					if (defined($showdata))
 					{
 						$GUIDEDATA[$showcount]->{id} = $id;
-						$GUIDEDATA[$showcount]->{airing_tmp} = $line;
+						$GUIDEDATA[$showcount]->{airing_tmp} = $airing;
 						$GUIDEDATA[$showcount]->{desc} = $showdata->{synopsis};
 					 	$GUIDEDATA[$showcount]->{subtitle} = $showdata->{episodeTitle};
 						$GUIDEDATA[$showcount]->{url} = $showdata->{program}->{image};
@@ -172,13 +180,13 @@ sub getepg
 							$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
 							$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3 $4:$5:00";
 						}
-						my $catcount = 0;
+						warn("\tGetting program data for $id on $day from $url - $GUIDEDATA[$showcount]->{title} at $GUIDEDATA[$showcount]->{start} $showdata->{date}...\n");
 						$showcount++;
 					}
 				}
 			}
 		}
-	#}
+	}
 	warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
 }
 
@@ -221,13 +229,13 @@ sub printepg
 			$episodeseries = "$series.$episode.";
 			${$XMLRef}->dataElement('episode-num', $episodeseries, 'system' => 'xmltv_ns') ;
 		}
+		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
 		if (defined($items->{rating}))
 		{
 			${$XMLRef}->startTag('rating');
 			${$XMLRef}->dataElement('value', $items->{rating});
 			${$XMLRef}->endTag('rating');
 		}
-		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
 		${$XMLRef}->endTag('programme');
 	}
 }
@@ -336,14 +344,21 @@ sub nextday
     my @days = ("mon","tue","wed","thu","fri","sat","sun");
     my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime();
     my $daynumber = $wday + $daycount ;
-    if ($daynumber < 8)
+    if ($daycount eq 0)
+    {
+        $returnday = "today";
+    }
+    elsif ($daycount eq 1)
+    {
+        $returnday = "tomorrow";
+    }
+    elsif ($daynumber < 8)
     {
         $returnday = $days[$daynumber-1];
     }
     else {
         $returnday = $days[$daynumber-7-1];
     }
-    return $returnday;
 }
 
 sub usage
