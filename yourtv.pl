@@ -7,6 +7,7 @@ use Getopt::Long;
 use LWP::UserAgent;
 use XML::Writer;
 use Data::Dumper;
+use URI;
 
 my %map = (
 	 '&' => 'and',
@@ -47,7 +48,6 @@ for my $tmpregion ( @REGIONS )
 	if ($tmpregion->{id} eq $REGION) {
         $validregion = 1;
         $REGION_TIMEZONE = $tmpregion->{timezone};
-        $REGION_TIMEZONE =~ s/(\/)/%2F/;
 	}
 }
 die(	  "\n"
@@ -114,20 +114,18 @@ sub getepg
 {
 	my $ua = shift;
 	my $showcount = 0;
-
-
 	my $url;
 	for(my $day = 0; $day < $NUMDAYS; $day++)
 	{
 		my $day = nextday($day);
 		my $id;
-		$url = "https://www.yourtv.com.au/api/guide/?day=" . $day . "&timezone=" . $REGION_TIMEZONE . "&format=json&region=" . $REGION;
+		my $url = URI->new( 'https://www.yourtv.com.au/api/guide/' );
+		$url->query_form(day => $day, timezone => $REGION_TIMEZONE, format => 'json', region => $REGION);
 		warn("\nGetting channel program listing for $REGION for $day ($url)...\n") if ($VERBOSE);
-		my $res = $ua->get($url );
+		my $res = $ua->get($url);
 		die("Unable to connect to YourTV for $url.\n") if (!$res->is_success);
 		my $data = $res->content;
 		my $tmpdata;
-		my @tmpjsondata;
 		eval
 		{
 			$tmpdata = decode_json($data);
@@ -161,7 +159,7 @@ sub getepg
 						$GUIDEDATA[$showcount]->{desc} = $showdata->{synopsis};
 					 	$GUIDEDATA[$showcount]->{subtitle} = $showdata->{episodeTitle};
 						$GUIDEDATA[$showcount]->{url} = $showdata->{program}->{image};
-						$GUIDEDATA[$showcount]->{start} = toLocalTimeString($showdata->{date});
+						$GUIDEDATA[$showcount]->{start} = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
 						$GUIDEDATA[$showcount]->{stop} = addTime($showdata->{duration},$GUIDEDATA[$showcount]->{start});
 						$GUIDEDATA[$showcount]->{start} =~ s/[-T:]//g;
 						$GUIDEDATA[$showcount]->{start} =~ s/\+/ \+/g;
@@ -175,7 +173,7 @@ sub getepg
 						$GUIDEDATA[$showcount]->{category} = $showdata->{genre}->{name};
 						if (!defined($GUIDEDATA[$showcount]->{season}))
 						{
-							my $tmpseries = toLocalTimeString($showdata->{date});
+							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
 							$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
 							$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3 $4:$5:00";
 						}
@@ -249,7 +247,7 @@ sub sanitizeText
 
 sub toLocalTimeString
 {
-	my $fulldate = shift;
+	my ($fulldate, $result_timezone) = @_;
 	my ($year, $month, $day, $hour, $min, $sec, $offset) = $fulldate =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)(.*)/;#S$1E$2$3$4$5$6$7/;
 	my ($houroffset, $minoffset);
 
@@ -273,8 +271,9 @@ sub toLocalTimeString
 		 	nanosecond	=> 0,
 		 	time_zone	=> $offset,
 		);
-	my $tz = DateTime::TimeZone::Local->TimeZone();
-	my $localoffset = $tz->offset_for_datetime(DateTime->now());
+	$dt->set_time_zone(  $result_timezone );
+	my $tz = DateTime::TimeZone->new( name => $result_timezone );
+	my $localoffset = $tz->offset_for_datetime($dt);
 	$localoffset = $localoffset/3600;
 	if ($localoffset =~ /\./)
 	{
@@ -283,7 +282,6 @@ sub toLocalTimeString
 	} else {
 		$localoffset = sprintf("+%0.2d:00", $localoffset);
 	}
-	$dt->set_time_zone( $tz );
 	my $ymd = $dt->ymd;
 	my $hms = $dt->hms;
 	my $returntime = $ymd . "T" . $hms . $localoffset;
@@ -304,24 +302,10 @@ sub addTime
 		 	nanosecond	=> 0,
 		 	time_zone	=> $offset,
 		);
-
-	my $epochStartTime = $dt->epoch();
-	my $epochendTime = $epochStartTime + ($duration*60);
-	my $endTime = DateTime->from_epoch(epoch => $epochendTime);
-	my $tz = DateTime::TimeZone::Local->TimeZone();
-	my $localoffset = $tz->offset_for_datetime(DateTime->now());
-	$localoffset = $localoffset/3600;
-	if ($localoffset =~ /\./)
-	{
-		$localoffset =~ s/(.*)(\..*)/$1$2/;
-		$localoffset = sprintf("+%0.2d:%0.2d", $1, ($2*60));
-	} else {
-		$localoffset = sprintf("+%0.2d:00", $localoffset);
-	}
-	$endTime->set_time_zone( $tz );
+	my $endTime = $dt + DateTime::Duration->new( minutes => $duration );
 	my $ymd = $endTime->ymd;
 	my $hms = $endTime->hms;
-	my $returntime = $ymd . "T" . $hms . $localoffset;
+	my $returntime = $ymd . "T" . $hms . $offset;
 	return ($returntime);
 }
 
