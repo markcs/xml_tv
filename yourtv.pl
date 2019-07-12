@@ -15,9 +15,15 @@ my %map = (
 my $chars = join '', keys %map;
 
 my @CHANNELDATA;
+my $FVICONS;
 my @GUIDEDATA;
 my $REGION_TIMEZONE;
-my ($VERBOSE, $pretty, $NUMDAYS, $REGION, $outputfile, $help) = (0, 0, 7, undef, undef, undef);
+my $ua = LWP::UserAgent->new;
+$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
+$ua->default_header('Accept' => 'application/json');
+my @REGIONS = buildregions();
+
+my ($VERBOSE, $pretty, $usefreeviewicons, $NUMDAYS, $REGION, $outputfile, $help) = (0, 0, 0, 7, undef, undef, undef);
 GetOptions
 (
 	'verbose'	=> \$VERBOSE,
@@ -25,22 +31,12 @@ GetOptions
 	'days=i'	=> \$NUMDAYS,
 	'region=s'	=> \$REGION,
 	'output=s'	=> \$outputfile,
+	'fvicons'   => \$usefreeviewicons,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
 die usage() if ($help);
 
-my $ua = LWP::UserAgent->new;
-$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
-$ua->default_header('Accept' => 'application/json');
-my @REGIONS = buildregions();
-
-die(      "\n"
-	. "Please use the command.\n"
-	. "\tfree_epg.pl --region=<region> --output=<output xmltv filename>.\n\n"
-	. "\tREGION-NUMBER is one of the following:\n\t\t"
-	. join("\n\t\t", (map { "$_->{id}\t=\t$_->{name}" } @REGIONS) )
-	. "\n\n"
-   ) if (!defined($REGION));
+die(usage() ) if (!defined($REGION));
 
 my $validregion = 0;
 for my $tmpregion ( @REGIONS )
@@ -60,7 +56,7 @@ warn("Options...\nVerbose = $VERBOSE, days = $NUMDAYS, pretty = $pretty, region=
 
 # Initialise here (connections to the same server will be cached)
 
-
+getFVIcons($ua) if ($usefreeviewicons);
 getchannels($ua);
 getepg($ua);
 
@@ -106,7 +102,13 @@ sub getchannels
 		$CHANNELDATA[$count]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
 		$CHANNELDATA[$count]->{lcn} = $tmpchanneldata->[$count]->{number};
 		$CHANNELDATA[$count]->{icon} = $tmpchanneldata->[$count]->{logo}->{url};
-		warn("Got channel $CHANNELDATA[$count]->{id} - $CHANNELDATA[$count]->{name} ...\n") if ($VERBOSE);
+		$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
+		#FIX SBS ICONS
+		if (($usefreeviewicons) && (!defined($CHANNELDATA[$count]->{icon})) && ($CHANNELDATA[$count]->{name} =~ /SBS/)) {
+			$tmpchanneldata->[$count]->{number} =~ s/(\d)./$1/;
+			$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
+		}
+		warn("Got channel $CHANNELDATA[$count]->{id} - $CHANNELDATA[$count]->{name}  ...\n") if ($VERBOSE);
 	}
 }
 
@@ -184,7 +186,7 @@ sub getepg
 			}
 		}
 	}
-	warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
+	warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
 }
 
 sub printchannels
@@ -344,18 +346,74 @@ sub nextday
     }
 }
 
+sub getFVIcons
+{
+    $ua = shift;
+	my @fvregions = (
+		"region_national",
+		"region_nsw_sydney",
+#		"region_nsw_newcastle",
+#		"region_nsw_taree",
+		"region_nsw_tamworth",
+#		"region_nsw_orange_dubbo_wagga",
+		"region_nsw_northern_rivers",
+#		"region_nsw_wollongong",
+		"region_nsw_canberra",
+		"region_nt_regional",
+#		"region_vic_albury",
+#		"region_vic_shepparton",
+		"region_vic_bendigo",
+		"region_vic_melbourne",
+#		"region_vic_ballarat",
+#		"region_vic_gippsland",
+		"region_qld_brisbane",
+#		"region_qld_goldcoast",
+		"region_qld_toowoomba",
+#		"region_qld_maryborough",
+#		"region_qld_widebay",
+#		"region_qld_rockhampton",
+#		"region_qld_mackay",
+#		"region_qld_townsville",
+#		"region_qld_cairns",
+		"region_sa_adelaide",
+		"region_sa_regional",
+		"region_wa_perth",
+		"region_wa_regional_wa",
+#		"region_tas_hobart",
+		"region_tas_launceston",
+	);
+
+	foreach my $fvregion (@fvregions)
+	{
+		my $url = "https://fvau-api-prod.switch.tv/content/v1/channels/region/" . $fvregion
+			. "?limit=100&offset=0&include_related=1&expand_related=full&related_entity_types=images";
+		my $res = $ua->get($url);
+
+		die("Unable to connect to FreeView.\n") if (!$res->is_success);
+		my $data = $res->content;
+		my $tmpchanneldata = decode_json($data);
+		$tmpchanneldata = $tmpchanneldata->{data};
+		for (my $count = 0; $count < @$tmpchanneldata; $count++)
+		{
+			$FVICONS->{$tmpchanneldata->[$count]->{lcn}} = $tmpchanneldata->[$count]->{related}->{images}[0]->{url};
+        }
+	}
+}
+
+
 sub usage
 {
 	return    "Usage:\n"
-		. "\t$0 --region=<region> [--days=<days to collect>] [--pretty] [--output <filename>] [--VERBOSE] [--help|?]\n"
+		. "\t$0 --region=<region> [--output <filename>] [--days=<days to collect>] [--fvicons] [--pretty] [--VERBOSE] [--help|?]\n"
 		. "\n\tWhere:\n\n"
-		. "\t--region=<region>\tThis defines which tv guide to parse. It is mandatory. Refer below for a list of regions.\n"
+		. "\t--region=<region>\t\tThis defines which tv guide to parse. It is mandatory. Refer below for a list of regions.\n"
 		. "\t--days=<days to collect>\tThis defaults to 7 days and can be no more than 7.\n"
-		. "\t--pretty\t\tOutput the XML with tabs and newlines to make human readable.\n"
-		. "\t--output <filename>\tWrite to the location and file specified instead of standard output\n"
-		. "\t--verbose\t\tVerbose Mode (prints processing steps to STDERR).\n"
-		. "\t--help\t\t\tWill print this usage and exit!\n"
-		. "\t  <region> is one of the following:\n\t\t"
-		. join("\n\t\t", @REGIONS)
+		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
+		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
+		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
+		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
+		. "\t--help\t\t\t\tWill print this usage and exit!\n"
+		. "\t  <region> is one of the following:\n\t\t\t"
+		. join("\n\t\t", (map { "$_->{id}\t=\t$_->{name}" } @REGIONS) )
 		. "\n\n";
 }
