@@ -6,7 +6,6 @@ use DateTime;
 use Getopt::Long;
 use LWP::UserAgent;
 use XML::Writer;
-use Data::Dumper;
 use URI;
 
 my %map = (
@@ -23,7 +22,7 @@ $ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Fi
 $ua->default_header('Accept' => 'application/json');
 my @REGIONS = buildregions();
 
-my ($VERBOSE, $pretty, $usefreeviewicons, $NUMDAYS, $REGION, $outputfile, $help) = (0, 0, 0, 7, undef, undef, undef);
+my ($VERBOSE, $pretty, $usefreeviewicons, $NUMDAYS, $ignorechannels, $REGION, $outputfile, $help) = (0, 0, 0, 7, undef, undef, undef, undef);
 GetOptions
 (
 	'verbose'	=> \$VERBOSE,
@@ -31,6 +30,7 @@ GetOptions
 	'days=i'	=> \$NUMDAYS,
 	'region=s'	=> \$REGION,
 	'output=s'	=> \$outputfile,
+	'ignore=s'	=> \$ignorechannels,
 	'fvicons'   => \$usefreeviewicons,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
@@ -52,9 +52,11 @@ die(	  "\n"
 	. "\n\n"
    ) if (!$validregion); # (!defined($REGIONS->{$REGION}));
 
-warn("Options...\nVerbose = $VERBOSE, days = $NUMDAYS, pretty = $pretty, region=$REGION, output=$outputfile\n\n") if ($VERBOSE);
+warn("Options...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $usefreeviewicons, Verbose = $VERBOSE, pretty = $pretty, \n\n") if ($VERBOSE);
 
 # Initialise here (connections to the same server will be cached)
+my @IGNORECHANNELS;
+@IGNORECHANNELS = split(/,/,$ignorechannels) if (defined($ignorechannels));
 
 getFVIcons($ua) if ($usefreeviewicons);
 getchannels($ua);
@@ -97,6 +99,7 @@ sub getchannels
 	my $tmpchanneldata = decode_json($data);
 	for (my $count = 0; $count < @$tmpchanneldata; $count++)
 	{
+        next if ( ( grep( /^$tmpchanneldata->[$count]->{number}$/, @IGNORECHANNELS ) ) );
 		$CHANNELDATA[$count]->{tv_id} = $tmpchanneldata->[$count]->{id};
 		$CHANNELDATA[$count]->{name} = $tmpchanneldata->[$count]->{description};
 		$CHANNELDATA[$count]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
@@ -139,6 +142,8 @@ sub getepg
 			for (my $channelcount = 0; $channelcount < @$tmpdata; $channelcount++)
 			{
 				next if (!defined($tmpdata->[$channelcount]->{number}));
+				next if ( ( grep( /^$tmpdata->[$channelcount]->{number}$/, @IGNORECHANNELS ) ) );
+
 				$id = $tmpdata->[$channelcount]->{number}.".yourtv.com.au";
 				my $blocks = $tmpdata->[$channelcount]->{blocks};
 				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
@@ -173,11 +178,18 @@ sub getepg
 						$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
 						$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber} if (defined($showdata->{episodeNumber}));
 						$GUIDEDATA[$showcount]->{category} = $showdata->{genre}->{name};
+						if (defined($showdata->{repeat} ) )
+						{
+							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
+							$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
+							$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3";
+							$GUIDEDATA[$showcount]->{previouslyshown} = "$1-$2-$3";
+						}
 						if (!defined($GUIDEDATA[$showcount]->{season}))
 						{
 							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
 							$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
-							$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3 $4:$5:00";
+							$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3";
 						}
 						#warn("\tGetting program data for $id on $day from $url - $GUIDEDATA[$showcount]->{title} at $GUIDEDATA[$showcount]->{start} $showdata->{date}...\n");
 						$showcount++;
@@ -219,7 +231,7 @@ sub printepg
 		${$XMLRef}->emptyTag('icon', 'src' => $items->{url}) if (defined($items->{url}));
 		if (defined($items->{season}) && defined($items->{episode}))
 		{
-			my $episodeseries = "S" . $items->{season} . "E" . $items->{episode};
+			my $episodeseries = sprintf("S%0.2dE%0.2d",$items->{season}, $items->{episode});
 			${$XMLRef}->dataElement('episode-num', $episodeseries, 'system' => 'SxxExx');
 			my $series = $items->{season} - 1;
 			my $episode = $items->{episode} - 1;
@@ -229,6 +241,7 @@ sub printepg
 			${$XMLRef}->dataElement('episode-num', $episodeseries, 'system' => 'xmltv_ns') ;
 		}
 		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
+		${$XMLRef}->emptyTag('previously-shown', 'start' => $items->{originalairdate}) if (defined($items->{originalairdate}));
 		if (defined($items->{rating}))
 		{
 			${$XMLRef}->startTag('rating');
@@ -404,12 +417,13 @@ sub getFVIcons
 sub usage
 {
 	return    "Usage:\n"
-		. "\t$0 --region=<region> [--output <filename>] [--days=<days to collect>] [--fvicons] [--pretty] [--VERBOSE] [--help|?]\n"
+		. "\t$0 --region=<region> [--output <filename>] [--days=<days to collect>] [--ignore=<channel to ignore>] [--fvicons] [--pretty] [--VERBOSE] [--help|?]\n"
 		. "\n\tWhere:\n\n"
 		. "\t--region=<region>\t\tThis defines which tv guide to parse. It is mandatory. Refer below for a list of regions.\n"
 		. "\t--days=<days to collect>\tThis defaults to 7 days and can be no more than 7.\n"
 		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
 		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
+		. "\t--ignore=<channel to ignore>\tA comma separated list of channel numbers to ignore. The channel number is matched against the lcn tag within the xml.\n"
 		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
 		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
 		. "\t--help\t\t\t\tWill print this usage and exit!\n"
