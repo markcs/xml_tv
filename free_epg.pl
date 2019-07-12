@@ -111,7 +111,7 @@ sub getchannels
 	my $ua = shift;
 	my $data;
 	warn("Getting channel list from FreeView ...\n") if ($VERBOSE);
-	my $url = "https://fvau-api-prod.switch.tv/content/v1/channels/REGION/" . $REGION
+	my $url = "https://fvau-api-prod.switch.tv/content/v1/channels/region/" . $REGION
 		. "?limit=100&offset=0&include_related=1&expand_related=full&related_entity_types=images";
 	my $res = $ua->get($url);
 
