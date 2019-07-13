@@ -148,51 +148,55 @@ sub getepg
 				my $blocks = $tmpdata->[$channelcount]->{blocks};
 				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
 				{
-					my $showdata;
-					my $airing = $blocks->[$blockcount]->{shows}[0]->{id};
-					$url = "https://www.yourtv.com.au/api/airings/" . $airing;
-					warn("\t\tGetting program data for $id on $day from $url ...\n") if ($VERBOSE);
-					my $res = $ua->get($url);
-					die("Unable to connect to YourTV for $url\n") if (!$res->is_success);
-					eval
+					my $subblocks = $blocks->[$blockcount]->{shows};
+					for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
 					{
-						$showdata = decode_json($res->content);
-						1;
-					};
-					if (defined($showdata))
-					{
-						$GUIDEDATA[$showcount]->{id} = $id;
-						$GUIDEDATA[$showcount]->{airing_tmp} = $airing;
-						$GUIDEDATA[$showcount]->{desc} = $showdata->{synopsis};
-					 	$GUIDEDATA[$showcount]->{subtitle} = $showdata->{episodeTitle};
-						$GUIDEDATA[$showcount]->{url} = $showdata->{program}->{image};
-						$GUIDEDATA[$showcount]->{start} = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
-						$GUIDEDATA[$showcount]->{stop} = addTime($showdata->{duration},$GUIDEDATA[$showcount]->{start});
-						$GUIDEDATA[$showcount]->{start} =~ s/[-T:]//g;
-						$GUIDEDATA[$showcount]->{start} =~ s/\+/ \+/g;
-						$GUIDEDATA[$showcount]->{stop} =~ s/[-T:]//g;
-						$GUIDEDATA[$showcount]->{stop} =~ s/\+/ \+/g;
-						$GUIDEDATA[$showcount]->{channel} = $showdata->{service}->{description};
-						$GUIDEDATA[$showcount]->{title} = $showdata->{title};
-						$GUIDEDATA[$showcount]->{rating} = $showdata->{classification};
-						$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
-						$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber} if (defined($showdata->{episodeNumber}));
-						$GUIDEDATA[$showcount]->{category} = $showdata->{genre}->{name};
-						if (defined($showdata->{repeat} ) )
+						my $showdata;
+						my $airing = $subblocks->[$airingcount]->{id};
+						$url = "https://www.yourtv.com.au/api/airings/" . $airing;
+						warn("\t\tGetting program data for $id on $day from $url ...\n") if ($VERBOSE);
+						my $res = $ua->get($url);
+						die("Unable to connect to YourTV for $url\n") if (!$res->is_success);
+						eval
 						{
-							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
-							$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
-							$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3";
-							$GUIDEDATA[$showcount]->{previouslyshown} = "$1-$2-$3";
-						}
-						if (!defined($GUIDEDATA[$showcount]->{season}))
+							$showdata = decode_json($res->content);
+							1;
+						};
+						if (defined($showdata))
 						{
-							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
-							$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
-							$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3";
+							$GUIDEDATA[$showcount]->{id} = $id;
+							$GUIDEDATA[$showcount]->{airing_tmp} = $airing;
+							$GUIDEDATA[$showcount]->{desc} = $showdata->{synopsis};
+							$GUIDEDATA[$showcount]->{subtitle} = $showdata->{episodeTitle};
+							$GUIDEDATA[$showcount]->{url} = $showdata->{program}->{image};
+							$GUIDEDATA[$showcount]->{start} = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
+							$GUIDEDATA[$showcount]->{stop} = addTime($showdata->{duration},$GUIDEDATA[$showcount]->{start});
+							$GUIDEDATA[$showcount]->{start} =~ s/[-T:]//g;
+							$GUIDEDATA[$showcount]->{start} =~ s/\+/ \+/g;
+							$GUIDEDATA[$showcount]->{stop} =~ s/[-T:]//g;
+							$GUIDEDATA[$showcount]->{stop} =~ s/\+/ \+/g;
+							$GUIDEDATA[$showcount]->{channel} = $showdata->{service}->{description};
+							$GUIDEDATA[$showcount]->{title} = $showdata->{title};
+							$GUIDEDATA[$showcount]->{rating} = $showdata->{classification};
+							$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
+							$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber} if (defined($showdata->{episodeNumber}));
+							$GUIDEDATA[$showcount]->{category} = $showdata->{genre}->{name};
+							if (defined($showdata->{repeat} ) )
+							{
+								my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
+								$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
+								$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3";
+								$GUIDEDATA[$showcount]->{previouslyshown} = "$1-$2-$3";
+							}
+							if (!defined($GUIDEDATA[$showcount]->{season}))
+							{
+								my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
+								$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
+								$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3";
+							}
+							#warn("\tGetting program data for $id on $day from $url - $GUIDEDATA[$showcount]->{title} at $GUIDEDATA[$showcount]->{start} $showdata->{date}...\n");
+							$showcount++;
 						}
-						#warn("\tGetting program data for $id on $day from $url - $GUIDEDATA[$showcount]->{title} at $GUIDEDATA[$showcount]->{start} $showdata->{date}...\n");
-						$showcount++;
 					}
 				}
 			}
