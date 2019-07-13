@@ -178,23 +178,57 @@ sub getepg
 							$GUIDEDATA[$showcount]->{channel} = $showdata->{service}->{description};
 							$GUIDEDATA[$showcount]->{title} = $showdata->{title};
 							$GUIDEDATA[$showcount]->{rating} = $showdata->{classification};
-							$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
-							$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber} if (defined($showdata->{episodeNumber}));
-							$GUIDEDATA[$showcount]->{category} = $showdata->{genre}->{name};
+							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{genre}->{name});
+							#	program types as defined by yourtv $showdata->{programType}->{id}
+							#	1	 Television movie
+							#	2	 Cinema movie
+							#	3	 Mini series
+							#	4	 Series no episodes
+							#	5	 Series with episodes
+							#	8	 Limited series
+							#	9	 Special
+							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
+							my ($episodeYear, $episodeMonth, $episodeDay, $episodeHour, $episodeMinute) = $tmpseries =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/;#S$1E$2$3$4$5/;
+
+							if ($showdata->{programType}->{id} eq "1") {
+								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+							}
+							if ($showdata->{programType}->{id} eq "2") {
+								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+							}
+							if ($showdata->{programType}->{id} eq "3") {
+								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+								$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
+								$GUIDEDATA[$showcount]->{season} = "1";
+							}
+							if ($showdata->{programType}->{id} eq "4") {
+								#push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{id});
+								$GUIDEDATA[$showcount]->{premiere} = "1";
+								$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
+								$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
+							}
+							if ($showdata->{programType}->{id} eq "5") {
+								#push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{id});
+								if (defined($showdata->{seriesNumber})) {
+									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+								}
+								else
+								{
+									$GUIDEDATA[$showcount]->{season} = $episodeYear;
+								}
+								if (defined($showdata->{episodeNumber})) {
+									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+								}
+								else
+								{
+									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+								}
+							}
 							if (defined($showdata->{repeat} ) )
 							{
-								my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
-								$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
-								$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3";
-								$GUIDEDATA[$showcount]->{previouslyshown} = "$1-$2-$3";
+								$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
+								$GUIDEDATA[$showcount]->{previouslyshown} = "$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
 							}
-							if (!defined($GUIDEDATA[$showcount]->{season}))
-							{
-								my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
-								$tmpseries =~ s/(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/S$1E$2$3$4$5/;
-								$GUIDEDATA[$showcount]->{originalairdate} = "$1-$2-$3";
-							}
-							#warn("\tGetting program data for $id on $day from $url - $GUIDEDATA[$showcount]->{title} at $GUIDEDATA[$showcount]->{start} $showdata->{date}...\n");
 							$showcount++;
 						}
 					}
@@ -231,7 +265,9 @@ sub printepg
 		${$XMLRef}->dataElement('title', sanitizeText($items->{title}));
 		${$XMLRef}->dataElement('sub-title', sanitizeText($items->{subtitle})) if (defined($items->{subtitle}));
 		${$XMLRef}->dataElement('desc', sanitizeText($items->{desc})) if (defined($items->{desc}));
-		${$XMLRef}->dataElement('category', sanitizeText($items->{category})) if (defined($items->{category}));
+		foreach my $category (@{$items->{category}}) {
+			${$XMLRef}->dataElement('category', sanitizeText($category));
+		}
 		${$XMLRef}->emptyTag('icon', 'src' => $items->{url}) if (defined($items->{url}));
 		if (defined($items->{season}) && defined($items->{episode}))
 		{
@@ -245,13 +281,14 @@ sub printepg
 			${$XMLRef}->dataElement('episode-num', $episodeseries, 'system' => 'xmltv_ns') ;
 		}
 		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
-		${$XMLRef}->emptyTag('previously-shown', 'start' => $items->{originalairdate}) if (defined($items->{originalairdate}));
+		${$XMLRef}->emptyTag('previously-shown', 'start' => $items->{previouslyshown}) if (defined($items->{previouslyshown}));
 		if (defined($items->{rating}))
 		{
 			${$XMLRef}->startTag('rating');
 			${$XMLRef}->dataElement('value', $items->{rating});
 			${$XMLRef}->endTag('rating');
 		}
+		${$XMLRef}->emptyTag('premiere', "") if (defined($items->{premiere}));
 		${$XMLRef}->endTag('programme');
 	}
 }
