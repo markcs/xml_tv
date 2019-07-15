@@ -15,10 +15,8 @@ my $MAX_THREADS = 7;
 
 use IO::Socket::SSL;
 my $FURL_OK = eval 'use Furl; 1';
-if ($FURL_OK)
+if (!$FURL_OK)
 {
-	use Furl;
-} else {
 	warn("Furl not found, falling back to LWP for fetching URLs (this will be slow)...\n");
 	use LWP::UserAgent;
 }
@@ -48,24 +46,8 @@ my $CACHEFILE = "yourtv.db";
 my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
 my $ua;
 
-if ($FURL_OK)
-{
-	$ua = Furl->new(
-				agent => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0',
-				timeout => 30,
-				headers => [ 'Accept-Encoding' => 'application/json' ],
-				ssl_opts => {SSL_verify_mode => 0}
-			);
-} else {
-	$ua = LWP::UserAgent->new;
-	$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
-	$ua->default_header('Accept' => 'application/json');
-}
-
-my @REGIONS = buildregions();
 my (%dbm_hash, %thrdret);
 local (*DBMRO, *DBMRW);
-my @threadids = ();
 
 my ($DEBUG, $VERBOSE, $pretty, $usefreeviewicons, $NUMDAYS, $ignorechannels, $REGION, $outputfile, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef);
 GetOptions
@@ -85,7 +67,24 @@ die usage() if ($help);
 
 die(usage() ) if (!defined($REGION));
 
+if ($FURL_OK)
+{
+	warn("Using Furl for fetching http:// and https:// requests.\n") if ($VERBOSE);
+	$ua = Furl->new(
+				agent => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0',
+				timeout => 30,
+				headers => [ 'Accept-Encoding' => 'application/json' ],
+				ssl_opts => {SSL_verify_mode => 0}
+			);
+} else {
+	warn("Using LWP::UserAgent for fetching http:// and https:// requests.\n") if ($VERBOSE);
+	$ua = LWP::UserAgent->new;
+	$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
+	$ua->default_header('Accept' => 'application/json');
+}
+
 my $validregion = 0;
+my @REGIONS = buildregions();
 for my $tmpregion ( @REGIONS )
 {
 	if ($tmpregion->{id} eq $REGION) {
