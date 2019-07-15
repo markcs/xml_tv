@@ -8,7 +8,7 @@ my $threading_ok = eval 'use threads; 1';
 if ($threading_ok)
 {
         use threads;
-#        use threads::shared;
+        use threads::shared;
 }
 
 my $MAX_THREADS = 7;
@@ -31,6 +31,8 @@ use Fcntl qw(:DEFAULT :flock);
 use File::Copy;
 
 use DB_File;
+
+use Data::Dumper;
 
 my %map = (
 	 '&' => 'and',
@@ -81,6 +83,7 @@ if ($FURL_OK)
 	$ua = LWP::UserAgent->new;
 	$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
 	$ua->default_header( 'Accept-Encoding' => 'application/json');
+	$ua->default_header( 'Accept-Charset' => 'utf-8');
 }
 
 my $validregion = 0;
@@ -115,8 +118,8 @@ warn("Initializing $MAX_THREADS worker threads...\n") if ($VERBOSE);
 
 for (1 .. $MAX_THREADS)
 {
-	my $tid = threads->create( \&url_fetch_thread ); #->detach();
-	warn("[$_] Started thread $tid...\n") if ($DEBUG);
+	threads->create( \&url_fetch_thread )->detach();
+	warn("Started thread $_...\n") if ($DEBUG);
 }
 
 if (! -e $CACHEFILE)
@@ -154,12 +157,14 @@ $INQ->end();
 $OUTQ->end();
 # joining all threads
 
+# while ->detach() threads they will shutdown automatically by
+# closing the queues.  So this message is just informational
 warn("Shutting down all threads...\n") if ($VERBOSE);
-foreach my $thr ( threads->list() )
-{
-	warn("Joining thread $thr..\n") if ($DEBUG);
-	$thr->join();
-}
+#foreach my $thr ( threads->list() )
+#{
+#	warn("Joining thread $thr..\n") if ($DEBUG);
+#	$thr->join();
+#}
 
 warn("Closing Cache files.\n") if ($VERBOSE);
 # close out both DBs and write the new temp one over the saved one
@@ -214,6 +219,7 @@ sub url_fetch_thread
 		$tua = LWP::UserAgent->new;
 		$tua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
 		$tua->default_header('Accept-Encoding' => 'application/json');
+		$tua->default_header('Accept-Charset' => 'utf-8');
 	}
 	while (defined( my $airingid = $INQ->dequeue()))
 	{
@@ -235,15 +241,15 @@ sub url_fetch_thread
 sub getchannels
 {
 	my $ua = shift;
-	my $data;
 	warn("Getting channel list from YourTV ...\n") if ($VERBOSE);
 	my $url = "https://www.yourtv.com.au/api/regions/" . $REGION . "/channels";
 	my $res = $ua->get($url);
+	my $tmpchanneldata;
 
 	die("Unable to connect to FreeView.\n") if (!$res->is_success);
 
-	$data = $res->content;
-	my $tmpchanneldata = decode_json($data);
+	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
+
 	for (my $count = 0; $count < @$tmpchanneldata; $count++)
 	{
         next if ( ( grep( /^$tmpchanneldata->[$count]->{number}$/, @IGNORECHANNELS ) ) );
@@ -278,11 +284,10 @@ sub getepg
 		warn("Getting channel program listing for $REGION_NAME ($REGION) for $day ($url)...\n") if ($VERBOSE);
 		my $res = $ua->get($url);
 		die("Unable to connect to YourTV for $url.\n") if (!$res->is_success);
-		my $data = $res->content;
 		my $tmpdata;
 		eval
 		{
-			$tmpdata = decode_json($data);
+			$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 			1;
 		};
 		my $chandata = $tmpdata->[0]->{channels};
@@ -350,7 +355,7 @@ sub getepg
 						die("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing\n") if ($thrdret{$airing} eq "undef");
 						eval
 						{
-							$showdata = decode_json($thrdret{$airing});
+							$showdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($thrdret{$airing});
 							1;
 						};
 						if (defined($showdata))
@@ -563,7 +568,7 @@ sub buildregions {
 	my $data = $res->content;
 	$data =~ s/\R//g;
 	$data =~ s/.*window.regionState\s+=\s+(\[.*\]);.*/$1/;
-	my $region_json = decode_json($data);
+	my $region_json = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
     return @$region_json;
 }
 
@@ -636,7 +641,7 @@ sub getFVIcons
 
 		die("Unable to connect to FreeView.\n") if (!$res->is_success);
 		my $data = $res->content;
-		my $tmpchanneldata = decode_json($data);
+		my $tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 		$tmpchanneldata = $tmpchanneldata->{data};
 		for (my $count = 0; $count < @$tmpchanneldata; $count++)
 		{
