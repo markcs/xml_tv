@@ -80,7 +80,7 @@ if ($FURL_OK)
 	warn("Using LWP::UserAgent for fetching http:// and https:// requests.\n") if ($VERBOSE);
 	$ua = LWP::UserAgent->new;
 	$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
-	$ua->default_header('Accept' => 'application/json');
+	$ua->default_header( 'Accept-Encoding' => 'application/json');
 }
 
 my $validregion = 0;
@@ -213,7 +213,7 @@ sub url_fetch_thread
 	} else {
 		$tua = LWP::UserAgent->new;
 		$tua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
-		$tua->default_header('Accept' => 'application/json');
+		$tua->default_header('Accept-Encoding' => 'application/json');
 	}
 	while (defined( my $airingid = $INQ->dequeue()))
 	{
