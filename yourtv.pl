@@ -1,12 +1,38 @@
 #!/usr/bin/perl
+
 use strict;
 use warnings;
+
+my %thr = ();
+my $threading_ok = eval 'use threads; 1';
+if ($threading_ok)
+{
+        use threads;
+#        use threads::shared;
+}
+
+my $MAX_THREADS = 7;
+
+use IO::Socket::SSL;
+my $FURL_OK = eval 'use Furl; 1';
+if ($FURL_OK)
+{
+	use Furl;
+} else {
+	warn("Furl not found, falling back to LWP for fetching URLs (this will be slow)...\n");
+	use LWP::UserAgent;
+}
+
 use JSON;
 use DateTime;
 use Getopt::Long;
-use LWP::UserAgent;
 use XML::Writer;
 use URI;
+use Thread::Queue;
+use Fcntl qw(:DEFAULT :flock);
+use File::Copy;
+
+use DB_File;
 
 my %map = (
 	 '&' => 'and',
@@ -17,21 +43,42 @@ my @CHANNELDATA;
 my $FVICONS;
 my @GUIDEDATA;
 my $REGION_TIMEZONE;
-my $ua = LWP::UserAgent->new;
-$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
-$ua->default_header('Accept' => 'application/json');
-my @REGIONS = buildregions();
+my $REGION_NAME;
+my $CACHEFILE = "yourtv.db";
+my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
+my $ua;
 
-my ($VERBOSE, $pretty, $usefreeviewicons, $NUMDAYS, $ignorechannels, $REGION, $outputfile, $help) = (0, 0, 0, 7, undef, undef, undef, undef);
+if ($FURL_OK)
+{
+	$ua = Furl->new(
+				agent => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0',
+				timeout => 30,
+				headers => [ 'Accept-Encoding' => 'application/json' ],
+				ssl_opts => {SSL_verify_mode => 0}
+			);
+} else {
+	$ua = LWP::UserAgent->new;
+	$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
+	$ua->default_header('Accept' => 'application/json');
+}
+
+my @REGIONS = buildregions();
+my (%dbm_hash, %thrdret);
+local (*DBMRO, *DBMRW);
+my @threadids = ();
+
+my ($DEBUG, $VERBOSE, $pretty, $usefreeviewicons, $NUMDAYS, $ignorechannels, $REGION, $outputfile, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef);
 GetOptions
 (
+	'debug'		=> \$DEBUG,
 	'verbose'	=> \$VERBOSE,
 	'pretty'	=> \$pretty,
 	'days=i'	=> \$NUMDAYS,
 	'region=s'	=> \$REGION,
 	'output=s'	=> \$outputfile,
 	'ignore=s'	=> \$ignorechannels,
-	'fvicons'   => \$usefreeviewicons,
+	'fvicons'	=> \$usefreeviewicons,
+	'cachefile'	=> \$CACHEFILE,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
 die usage() if ($help);
@@ -44,6 +91,7 @@ for my $tmpregion ( @REGIONS )
 	if ($tmpregion->{id} eq $REGION) {
         $validregion = 1;
         $REGION_TIMEZONE = $tmpregion->{timezone};
+        $REGION_NAME = $tmpregion->{name};
 	}
 }
 die(	  "\n"
@@ -59,16 +107,82 @@ my @IGNORECHANNELS;
 @IGNORECHANNELS = split(/,/,$ignorechannels) if (defined($ignorechannels));
 
 getFVIcons($ua) if ($usefreeviewicons);
+
+warn("Initializing queues...\n") if ($VERBOSE);
+my $INQ = Thread::Queue->new();
+my $OUTQ = Thread::Queue->new();
+
+warn("Initializing $MAX_THREADS worker threads...\n") if ($VERBOSE);
+
+for (1 .. $MAX_THREADS)
+{
+	my $tid = threads->create( \&url_fetch_thread ); #->detach();
+	warn("[$_] Started thread $tid...\n") if ($DEBUG);
+}
+
+if (! -e $CACHEFILE)
+{
+	warn("Cache file not present/readable, this run will be slower than normal...\n");
+	# Create a new and empty file so this doesn't fail
+	tie %dbm_hash, "AnyDBM_File", $CACHEFILE, O_CREAT | O_RDWR, 0644 or
+		die("Cannot write to $CACHEFILE");
+	untie %dbm_hash;
+}
+
+# WARNING: This has to be done *AFTER* opening threads or thread closure
+# segfault the interpreter because of double free()s
+warn("Opening Cache files...\n") if ($VERBOSE);
+my $dbro = tie %dbm_hash, "DB_File", $CACHEFILE, O_RDONLY, 0644 or
+		die("Cannot open $CACHEFILE");
+my $fdro = $dbro->fd;							# get file desc
+open DBMRO, "+<&=$fdro" or die "Could not dup DBMRO for lock: $!";	# Get dup filehandle
+flock DBMRO, LOCK_EX;							# Lock it exclusively
+undef $dbro;
+
+my $dbrw = tie %thrdret,  "DB_File", $TMPCACHEFILE, O_CREAT | O_RDWR, 0644 or
+		die("Cannot write to $TMPCACHEFILE");
+my $fdrw = $dbrw->fd;							# get file desc
+open DBMRW, "+<&=$fdrw" or die "Could not dup DBMRW for lock: $!";	# Get dup filehandle
+flock DBMRW, LOCK_EX;							# Lock it exclusively
+undef $dbrw;
+
 getchannels($ua);
 getepg($ua);
 
+warn("Closing Queues...\n") if ($VERBOSE);
+# this will close the queues
+$INQ->end();
+$OUTQ->end();
+# joining all threads
+
+warn("Shutting down all threads...\n") if ($VERBOSE);
+foreach my $thr ( threads->list() )
+{
+	warn("Joining thread $thr..\n") if ($DEBUG);
+	$thr->join();
+}
+
+warn("Closing Cache files.\n") if ($VERBOSE);
+# close out both DBs and write the new temp one over the saved one
+untie(%dbm_hash);
+untie(%thrdret);
+close DBMRW;
+close DBMRO;
+
+warn("Replacing old Cache file with the new one...\n") if ($VERBOSE);
+move($TMPCACHEFILE, $CACHEFILE);
+
+warn("Starting to build the XML...\n") if ($VERBOSE);
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
 $XML->xmlDecl("ISO-8859-1");
 $XML->doctype("tv", undef, "xmltv.dtd");
 $XML->startTag('tv', 'generator-info-url' => "http://www.xmltv.org/");
 
+warn("Building the channel list...\n") if ($VERBOSE);
 printchannels(\$XML);
+warn("Building the EPG list...\n") if ($VERBOSE);
 printepg(\$XML);
+warn("Finishing the XML...\n") if ($VERBOSE);
 $XML->endTag('tv');
 
 if (!defined $outputfile)
@@ -85,12 +199,46 @@ if (!defined $outputfile)
 }
 exit(0);
 
+sub url_fetch_thread
+{
+	local $| = 1;
+	my $tua;
+	if ($FURL_OK)
+	{
+		$tua = Furl->new(
+					agent => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0',
+					timeout => 30,
+					headers => [ 'Accept-Encoding' => 'application/json' ],
+					ssl_opts => {SSL_verify_mode => 0}
+				);
+	} else {
+		$tua = LWP::UserAgent->new;
+		$tua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
+		$tua->default_header('Accept' => 'application/json');
+	}
+	while (defined( my $airingid = $INQ->dequeue()))
+	{
+		my $url = "https://www.yourtv.com.au/api/airings/" . $airingid;
+		warn("Using $tua to fetch $url\n") if ($DEBUG);
+		print "." if ($VERBOSE);
+		my $res = $tua->get($url);
+		if (!$res->is_success)
+		{
+			warn(threads->self()->tid(). ": Thread Fetch FAILED for: $url (" . $res->code . ")\n");
+			$OUTQ->enqueue("$airingid|undef");
+		} else {
+			$OUTQ->enqueue($airingid . "|" . $res->content);
+			warn(threads->self()->tid(). ": Thread Fetch SUCCESS for: $url\n") if ($DEBUG);
+		}
+	}
+}
+
 sub getchannels
 {
 	my $ua = shift;
 	my $data;
 	warn("Getting channel list from YourTV ...\n") if ($VERBOSE);
-	my $url = "https://www.yourtv.com.au/api/regions/".$REGION."/channels";
+	my $url = "https://www.yourtv.com.au/api/regions/" . $REGION . "/channels";
 	my $res = $ua->get($url);
 
 	die("Unable to connect to FreeView.\n") if (!$res->is_success);
@@ -120,13 +268,15 @@ sub getepg
 	my $ua = shift;
 	my $showcount = 0;
 	my $url;
+
+	warn(" \n") if ($VERBOSE);
 	for(my $day = 0; $day < $NUMDAYS; $day++)
 	{
 		my $day = nextday($day);
 		my $id;
 		my $url = URI->new( 'https://www.yourtv.com.au/api/guide/' );
 		$url->query_form(day => $day, timezone => $REGION_TIMEZONE, format => 'json', region => $REGION);
-		warn("\nGetting channel program listing for $REGION for $day ($url)...\n") if ($VERBOSE);
+		warn("Getting channel program listing for $REGION_NAME ($REGION) for $day ($url)...\n") if ($VERBOSE);
 		my $res = $ua->get($url);
 		die("Unable to connect to YourTV for $url.\n") if (!$res->is_success);
 		my $data = $res->content;
@@ -136,30 +286,72 @@ sub getepg
 			$tmpdata = decode_json($data);
 			1;
 		};
-		$tmpdata = $tmpdata->[0]->{channels};
-		if (defined($tmpdata))
+		my $chandata = $tmpdata->[0]->{channels};
+		if (defined($chandata))
 		{
-			for (my $channelcount = 0; $channelcount < @$tmpdata; $channelcount++)
+			for (my $channelcount = 0; $channelcount < @$chandata; $channelcount++)
 			{
-				next if (!defined($tmpdata->[$channelcount]->{number}));
-				next if ( ( grep( /^$tmpdata->[$channelcount]->{number}$/, @IGNORECHANNELS ) ) );
+				next if (!defined($chandata->[$channelcount]->{number}));
+				next if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @IGNORECHANNELS ) ) );
 
-				$id = $tmpdata->[$channelcount]->{number}.".yourtv.com.au";
-				my $blocks = $tmpdata->[$channelcount]->{blocks};
+				my $enqueued = 0;
+				$id = $chandata->[$channelcount]->{number}.".yourtv.com.au";
+				my $blocks = $chandata->[$channelcount]->{blocks};
 				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
 				{
 					my $subblocks = $blocks->[$blockcount]->{shows};
 					for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
 					{
+						warn("Starting... ($blockcount < " . scalar @$blocks . "| $airingcount < " . scalar @$subblocks . ")\n") if ($DEBUG);
+						my $airing = $subblocks->[$airingcount]->{id};
+						warn("Starting $airing...\n") if ($DEBUG);
+						# We don't use the cache for 'today' incase of any last minute programming changes
+						if ($day eq "today" || !exists $dbm_hash{$airing} || $dbm_hash{$airing} eq "$airing|undef")
+						{
+							warn("No cache data for $airing, requesting...\n") if ($DEBUG);
+							$INQ->enqueue($airing);
+							++$enqueued; # Keep track of how many fetches we do
+						} else {
+							warn("Using cache for $airing.\n") if ($DEBUG);
+							my $data = $dbm_hash{$airing};
+							warn("Got cache data for $airing.\n") if ($DEBUG);
+							$thrdret{$airing} = $data;
+							warn("Wrote cache data for $airing.\n") if ($DEBUG);
+						}
+						warn("Done $airing...\n") if ($DEBUG);
+					}
+				}
+				for (my $l = 0;$l < $enqueued; ++$l)
+				{
+					# At this point all the threads should have all the URLs in the queue and
+					# will resolve them independently - this means they will not necessarily
+					# be in the right order when we get them back.  That said, because we will
+					# reuse these threads and queues on each loop we wait here to get back
+					# all the results before we continue.
+					my ($airing, $result) = split(/\|/, $OUTQ->dequeue(), 2);
+					warn("$airing = $result\n") if ($DEBUG);
+					$thrdret{$airing} = $result;
+				}
+				print "\n" if ($VERBOSE && $enqueued);
+				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
+				{
+					my $subblocks = $blocks->[$blockcount]->{shows};
+					#for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
+					#{
+					#	my ($airing, $result) = split(/\|/, $OUTQ->dequeue(), 2);
+					#	warn("$airing = $result\n") if ($DEBUG);
+					#	$thrdret{$airing} = $result;
+					#}
+					# Here we will have all the returned data in the hash %thrdret with the 
+					# url as the key.
+					for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
+					{
 						my $showdata;
 						my $airing = $subblocks->[$airingcount]->{id};
-						$url = "https://www.yourtv.com.au/api/airings/" . $airing;
-						warn("\t\tGetting program data for $id on $day from $url ...\n") if ($VERBOSE);
-						my $res = $ua->get($url);
-						die("Unable to connect to YourTV for $url\n") if (!$res->is_success);
+						die("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing\n") if ($thrdret{$airing} eq "undef");
 						eval
 						{
-							$showdata = decode_json($res->content);
+							$showdata = decode_json($thrdret{$airing});
 							1;
 						};
 						if (defined($showdata))
@@ -468,7 +660,7 @@ sub usage
 		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
 		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
 		. "\t--help\t\t\t\tWill print this usage and exit!\n"
-		. "\t  <region> is one of the following:\n\t\t\t"
+		. "\t  <region> is one of the following:\n\t\t"
 		. join("\n\t\t", (map { "$_->{id}\t=\t$_->{name}" } @REGIONS) )
 		. "\n\n";
 }
