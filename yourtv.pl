@@ -124,7 +124,7 @@ if (! -e $CACHEFILE)
 {
 	warn("Cache file not present/readable, this run will be slower than normal...\n");
 	# Create a new and empty file so this doesn't fail
-	tie %dbm_hash, "AnyDBM_File", $CACHEFILE, O_CREAT | O_RDWR, 0644 or
+	tie %dbm_hash, "DB_File", $CACHEFILE, O_CREAT | O_RDWR, 0644 or
 		die("Cannot write to $CACHEFILE");
 	untie %dbm_hash;
 }
