@@ -115,8 +115,8 @@ warn("Initializing $MAX_THREADS worker threads...\n") if ($VERBOSE);
 
 for (1 .. $MAX_THREADS)
 {
-	my $tid = threads->create( \&url_fetch_thread ); #->detach();
-	warn("[$_] Started thread $tid...\n") if ($DEBUG);
+	threads->create( \&url_fetch_thread )->detach();
+	warn("Started thread $_...\n") if ($DEBUG);
 }
 
 if (! -e $CACHEFILE)
@@ -154,12 +154,14 @@ $INQ->end();
 $OUTQ->end();
 # joining all threads
 
+# while ->detach() threads they will shutdown automatically by
+# closing the queues.  So this message is just informational
 warn("Shutting down all threads...\n") if ($VERBOSE);
-foreach my $thr ( threads->list() )
-{
-	warn("Joining thread $thr..\n") if ($DEBUG);
-	$thr->join();
-}
+#foreach my $thr ( threads->list() )
+#{
+#	warn("Joining thread $thr..\n") if ($DEBUG);
+#	$thr->join();
+#}
 
 warn("Closing Cache files.\n") if ($VERBOSE);
 # close out both DBs and write the new temp one over the saved one
