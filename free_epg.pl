@@ -115,7 +115,7 @@ sub getchannels
 		. "?limit=100&offset=0&include_related=1&expand_related=full&related_entity_types=images";
 	my $res = $ua->get($url);
 
-	die("Unable to connect to FreeView.\n") if (!$res->is_success);
+	die("Unable to connect to FreeView. [" . $res->status_line . "]\n") if (!$res->is_success);
 
 	$data = $res->content;
 	my $tmpchanneldata = decode_json($data);
@@ -155,7 +155,7 @@ sub getepg
 			$url = "https://fvau-api-prod.switch.tv/content/v1/epgs/" . $id . "?start=" . $startdate . "&end=" . $enddate
 				. "&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
 			my $res = $ua->get($url);
-			die("Unable to connect to FreeView.\n") if (!$res->is_success);
+			die("Unable to connect to FreeView. [" . $res->status_line . "]\n") if (!$res->is_success);
 			$data = $res->content;
 			my $tmpdata;
 			eval {
