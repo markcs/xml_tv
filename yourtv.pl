@@ -352,7 +352,11 @@ sub getepg
 					{
 						my $showdata;
 						my $airing = $subblocks->[$airingcount]->{id};
-						die("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing\n") if ($thrdret{$airing} eq "undef");
+						if ($thrdret{$airing} eq "undef")
+						{
+							warn("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... skipping\n");
+							next;
+						}
 						eval
 						{
 							$showdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($thrdret{$airing});
