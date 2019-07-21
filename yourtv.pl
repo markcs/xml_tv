@@ -69,6 +69,8 @@ die usage() if ($help);
 
 die(usage() ) if (!defined($REGION));
 
+$CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE) eq "yourtv.db")
+
 if ($FURL_OK)
 {
 	warn("Using Furl for fetching http:// and https:// requests.\n") if ($VERBOSE);
