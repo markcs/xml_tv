@@ -69,6 +69,8 @@ die usage() if ($help);
 
 die(usage() ) if (!defined($REGION));
 
+$CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE) eq "yourtv.db")
+
 if ($FURL_OK)
 {
 	warn("Using Furl for fetching http:// and https:// requests.\n") if ($VERBOSE);
@@ -230,7 +232,15 @@ sub url_fetch_thread
 		if (!$res->is_success)
 		{
 			warn(threads->self()->tid(). ": Thread Fetch FAILED for: $url (" . $res->code . ")\n");
-			$OUTQ->enqueue("$airingid|undef");
+			if ($res->code > 399 and $res->code < 500)
+			{
+				$OUTQ->enqueue("$airingid|FAILED");
+			} elsif ($res->code > 499) {
+				$OUTQ->enqueue("$airingid|ERROR");
+			} else {
+				# shouldn't be reached
+				$OUTQ->enqueue("$airingid|UNKNOWN")
+			}
 		} else {
 			$OUTQ->enqueue($airingid . "|" . $res->content);
 			warn(threads->self()->tid(). ": Thread Fetch SUCCESS for: $url\n") if ($DEBUG);
@@ -352,7 +362,15 @@ sub getepg
 					{
 						my $showdata;
 						my $airing = $subblocks->[$airingcount]->{id};
-						die("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing\n") if ($thrdret{$airing} eq "undef");
+						if ($thrdret{$airing} eq "FAILED")
+						{
+							warn("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... skipping\n");
+							next;
+						} elsif ($thrdret{$airing} eq "ERROR") {
+							die("FATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (error code >= 500 have you need banned?)\n");
+						} elsif ($thrdret{$airing} eq "UNKNOWN") {
+							die("FATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (Unknown Error!)\n");
+						}
 						eval
 						{
 							$showdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($thrdret{$airing});
