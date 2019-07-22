@@ -41,6 +41,8 @@ my $chars = join '', keys %map;
 
 my @CHANNELDATA;
 my $FVICONS;
+my $DVBTRIPLET;
+my $FVICONURL;
 my @GUIDEDATA;
 my $REGION_TIMEZONE;
 my $REGION_NAME;
@@ -51,7 +53,7 @@ my $ua;
 my (%dbm_hash, %thrdret);
 local (*DBMRO, *DBMRW);
 
-my ($DEBUG, $VERBOSE, $pretty, $usefreeviewicons, $NUMDAYS, $ignorechannels, $REGION, $outputfile, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef);
+my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $REGION, $outputfile, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef);
 GetOptions
 (
 	'debug'		=> \$DEBUG,
@@ -61,15 +63,11 @@ GetOptions
 	'region=s'	=> \$REGION,
 	'output=s'	=> \$outputfile,
 	'ignore=s'	=> \$ignorechannels,
-	'fvicons'	=> \$usefreeviewicons,
+	'include=s' => \$includechannels,
+	'fvicons'	=> \$USEFREEVIEWICONS,
 	'cachefile'	=> \$CACHEFILE,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
-die usage() if ($help);
-
-die(usage() ) if (!defined($REGION));
-
-$CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE eq "yourtv.db");
 
 if ($FURL_OK)
 {
@@ -87,6 +85,10 @@ if ($FURL_OK)
 	$ua->default_header( 'Accept-Encoding' => 'application/json');
 	$ua->default_header( 'Accept-Charset' => 'utf-8');
 }
+die usage() if ($help);
+die(usage() ) if (!defined($REGION));
+
+$CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE eq "yourtv.db");
 
 my $validregion = 0;
 my @REGIONS = buildregions();
@@ -104,13 +106,15 @@ die(	  "\n"
 	. "\n\n"
    ) if (!$validregion); # (!defined($REGIONS->{$REGION}));
 
-warn("Options...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $usefreeviewicons, Verbose = $VERBOSE, pretty = $pretty, \n\n") if ($VERBOSE);
+warn("Options...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $USEFREEVIEWICONS, Verbose = $VERBOSE, pretty = $pretty, \n\n") if ($VERBOSE);
 
 # Initialise here (connections to the same server will be cached)
 my @IGNORECHANNELS;
 @IGNORECHANNELS = split(/,/,$ignorechannels) if (defined($ignorechannels));
+my @INCLUDECHANNELS;
+@INCLUDECHANNELS = split(/,/,$includechannels) if (defined($includechannels));
 
-getFVIcons($ua) if ($usefreeviewicons);
+getFVInfo($ua);
 
 warn("Initializing queues...\n") if ($VERBOSE);
 my $INQ = Thread::Queue->new();
@@ -263,6 +267,8 @@ sub getchannels
 	for (my $count = 0; $count < @$tmpchanneldata; $count++)
 	{
         next if ( ( grep( /^$tmpchanneldata->[$count]->{number}$/, @IGNORECHANNELS ) ) );
+		next if ( ( !( grep( /^$tmpchanneldata->[$count]->{number}$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
+
 		$CHANNELDATA[$count]->{tv_id} = $tmpchanneldata->[$count]->{id};
 		$CHANNELDATA[$count]->{name} = $tmpchanneldata->[$count]->{description};
 		$CHANNELDATA[$count]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
@@ -270,7 +276,7 @@ sub getchannels
 		$CHANNELDATA[$count]->{icon} = $tmpchanneldata->[$count]->{logo}->{url};
 		$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
 		#FIX SBS ICONS
-		if (($usefreeviewicons) && (!defined($CHANNELDATA[$count]->{icon})) && ($CHANNELDATA[$count]->{name} =~ /SBS/)) {
+		if (($USEFREEVIEWICONS) && (!defined($CHANNELDATA[$count]->{icon})) && ($CHANNELDATA[$count]->{name} =~ /SBS/)) {
 			$tmpchanneldata->[$count]->{number} =~ s/(\d)./$1/;
 			$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
 		}
@@ -307,6 +313,7 @@ sub getepg
 			{
 				next if (!defined($chandata->[$channelcount]->{number}));
 				next if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @IGNORECHANNELS ) ) );
+				next if ( ( !( grep( /^$chandata->[$channelcount]->{number}$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 
 				my $enqueued = 0;
 				$id = $chandata->[$channelcount]->{number}.".yourtv.com.au";
@@ -382,7 +389,6 @@ sub getepg
 							$GUIDEDATA[$showcount]->{airing_tmp} = $airing;
 							$GUIDEDATA[$showcount]->{desc} = $showdata->{synopsis};
 							$GUIDEDATA[$showcount]->{subtitle} = $showdata->{episodeTitle};
-							$GUIDEDATA[$showcount]->{url} = $showdata->{program}->{image};
 							$GUIDEDATA[$showcount]->{start} = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
 							$GUIDEDATA[$showcount]->{stop} = addTime($showdata->{duration},$GUIDEDATA[$showcount]->{start});
 							$GUIDEDATA[$showcount]->{start} =~ s/[-T:]//g;
@@ -392,6 +398,21 @@ sub getepg
 							$GUIDEDATA[$showcount]->{channel} = $showdata->{service}->{description};
 							$GUIDEDATA[$showcount]->{title} = $showdata->{title};
 							$GUIDEDATA[$showcount]->{rating} = $showdata->{classification};
+							if (defined($showdata->{program}->{image}))
+							{
+								$GUIDEDATA[$showcount]->{url} = $showdata->{program}->{image};
+							}
+							else
+							{
+								if (defined($FVICONURL->{$chandata->[$channelcount]->{number}}->{$GUIDEDATA[$showcount]->{title}}))
+								{
+									$GUIDEDATA[$showcount]->{url} = $FVICONURL->{$chandata->[$channelcount]->{number}}->{$GUIDEDATA[$showcount]->{title}}
+								}
+								else
+								{
+									$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop})
+								}
+							}
 							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{genre}->{name});
 							#	program types as defined by yourtv $showdata->{programType}->{id}
 							#	1	 Television movie
@@ -404,25 +425,39 @@ sub getepg
 							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
 							my ($episodeYear, $episodeMonth, $episodeDay, $episodeHour, $episodeMinute) = $tmpseries =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/;#S$1E$2$3$4$5/;
 
-							if ($showdata->{programType}->{id} eq "1") {
+							#if ($showdata->{programType}->{id} eq "1") {
+							if ($showdata->{program}->{programTypeId} eq "1") {
 								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
 							}
-							if ($showdata->{programType}->{id} eq "2") {
+							elsif ($showdata->{program}->{programTypeId} eq "2") {
 								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
 							}
-							if ($showdata->{programType}->{id} eq "3") {
+							elsif ($showdata->{program}->{programTypeId} eq "3") {
 								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
 								$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
 								$GUIDEDATA[$showcount]->{season} = "1";
 							}
-							if ($showdata->{programType}->{id} eq "4") {
-								#push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{id});
+							elsif ($showdata->{program}->{programTypeId} eq "4") {
 								$GUIDEDATA[$showcount]->{premiere} = "1";
 								$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
-								$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
+								if (defined($showdata->{episodeNumber}))
+								{
+									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+								}
+								else
+								{
+									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+								}
+								if (defined($showdata->{seriesNumber})) {
+									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+								}
+								else
+								{
+									$GUIDEDATA[$showcount]->{season} = $episodeYear;
+								}
 							}
-							if ($showdata->{programType}->{id} eq "5") {
-								#push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{id});
+							elsif ($showdata->{program}->{programTypeId} eq "5")
+							{
 								if (defined($showdata->{seriesNumber})) {
 									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
 								}
@@ -437,6 +472,28 @@ sub getepg
 								{
 									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 								}
+							}
+							elsif ($showdata->{program}->{programTypeId} eq "8")
+							{
+								if (defined($showdata->{seriesNumber})) {
+									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+								}
+								else
+								{
+									$GUIDEDATA[$showcount]->{season} = $episodeYear;
+								}
+								if (defined($showdata->{episodeNumber})) {
+									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+								}
+								else
+								{
+									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+								}
+							}
+							elsif ($showdata->{program}->{programTypeId} eq "9")
+							{
+								$GUIDEDATA[$showcount]->{season} = $episodeYear;
+								$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 							}
 							if (defined($showdata->{repeat} ) )
 							{
@@ -614,7 +671,60 @@ sub nextday
     }
 }
 
-sub getFVIcons
+sub getFVShowIcon
+{
+	my ($lcn,$title,$startTime,$stopTime) = @_;
+	my $dvb_triplet = $DVBTRIPLET->{$lcn};
+	return if (!defined($dvb_triplet));
+
+	my $returnurl = "";
+	my ($year, $month, $day, $hour, $min, $sec, $offset) = $startTime =~ /(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s+(.*)/;#S$1E$2$3$4$5$6$7/;
+
+	my $dt = DateTime->new(
+		 	year		=> $year,
+		 	month		=> $month,
+		 	day			=> $day,
+		 	hour		=> 0,
+		 	minute		=> 0,
+		 	second		=> 0,
+		 	nanosecond	=> 0,
+		 	time_zone	=> $offset,
+		);
+	$dt->set_time_zone(  "GMT" );
+
+
+	$startTime = $dt->ymd('-') . 'T' . $dt->hms(':') . 'Z';
+	my $stopdt = $dt + DateTime::Duration->new( hours => 24 );
+
+	$stopTime = $stopdt->ymd('-') . 'T' . $stopdt->hms(':') . 'Z';
+	my $url = "https://fvau-api-prod.switch.tv/content/v1/epgs/".$dvb_triplet."?start=".$startTime."&end=".$stopTime."&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
+	my $res = $ua->get($url);
+	die("Unable to connect to FreeView.\n") if (!$res->is_success);
+	my $data = $res->content;
+	my $tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
+	$tmpchanneldata = $tmpchanneldata->{data};
+	if (defined($tmpchanneldata))
+	{
+		for (my $count = 0; $count < @$tmpchanneldata; $count++)
+		{
+			$FVICONURL->{$lcn}->{$title} = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
+			if ($tmpchanneldata->[$count]->{related}->{shows}[0]->{title} =~ /$title/i)
+			{
+				$returnurl = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
+				return $returnurl;
+			}
+			elsif ($tmpchanneldata->[$count]->{related}->{episodes}[0]->{title} =~ /$title/i)
+			{
+				$returnurl = $tmpchanneldata->[$count]->{related}->{episodes}[0]->{images}[0]->{url};
+				return $returnurl;
+			}
+		}
+	}
+   	return;
+}
+
+
+sub getFVInfo
 {
     $ua = shift;
 	my @fvregions = (
@@ -664,21 +774,24 @@ sub getFVIcons
 		for (my $count = 0; $count < @$tmpchanneldata; $count++)
 		{
 			$FVICONS->{$tmpchanneldata->[$count]->{lcn}} = $tmpchanneldata->[$count]->{related}->{images}[0]->{url};
+			$DVBTRIPLET->{$tmpchanneldata->[$count]->{lcn}} = $tmpchanneldata->[$count]->{'dvb_triplet'};
+
         }
 	}
 }
 
-
 sub usage
 {
+	@REGIONS = buildregions() if (!(@REGIONS));
 	return    "Usage:\n"
-		. "\t$0 --region=<region> [--output <filename>] [--days=<days to collect>] [--ignore=<channel to ignore>] [--fvicons] [--pretty] [--VERBOSE] [--help|?]\n"
+		. "\t$0 --region=<region> [--output <filename>] [--days=<days to collect>] [--ignore=<channels to ignore>] [--include=<channels to include>] [--fvicons] [--pretty] [--VERBOSE] [--help|?]\n"
 		. "\n\tWhere:\n\n"
 		. "\t--region=<region>\t\tThis defines which tv guide to parse. It is mandatory. Refer below for a list of regions.\n"
 		. "\t--days=<days to collect>\tThis defaults to 7 days and can be no more than 7.\n"
 		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
 		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
 		. "\t--ignore=<channel to ignore>\tA comma separated list of channel numbers to ignore. The channel number is matched against the lcn tag within the xml.\n"
+		. "\t--include=<channel to include>\tA comma separated list of channel numbers to include. The channel number is matched against the lcn tag within the xml.\n"
 		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
 		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
 		. "\t--help\t\t\t\tWill print this usage and exit!\n"
