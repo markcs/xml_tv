@@ -69,7 +69,7 @@ die usage() if ($help);
 
 die(usage() ) if (!defined($REGION));
 
-$CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE) eq "yourtv.db")
+$CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE eq "yourtv.db");
 
 if ($FURL_OK)
 {
@@ -356,7 +356,7 @@ sub getepg
 					#	warn("$airing = $result\n") if ($DEBUG);
 					#	$thrdret{$airing} = $result;
 					#}
-					# Here we will have all the returned data in the hash %thrdret with the 
+					# Here we will have all the returned data in the hash %thrdret with the
 					# url as the key.
 					for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
 					{
