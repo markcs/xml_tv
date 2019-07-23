@@ -47,6 +47,7 @@ my @GUIDEDATA;
 my $REGION_TIMEZONE;
 my $REGION_NAME;
 my $CACHEFILE = "yourtv.db";
+my $CACHETIME = 86400; # 1 day - don't change this unless you know what you are doing.
 my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
 my $ua;
 
@@ -63,9 +64,10 @@ GetOptions
 	'region=s'	=> \$REGION,
 	'output=s'	=> \$outputfile,
 	'ignore=s'	=> \$ignorechannels,
-	'include=s' => \$includechannels,
-	'fvicons'	=> \$USEFREEVIEWICONS,
-	'cachefile'	=> \$CACHEFILE,
+  'include=s' => \$includechannels,
+  'fvicons'	=> \$usefreeviewicons,
+	'cachefile=s'	=> \$CACHEFILE,
+	'cachetime=i'	=> \$CACHETIME,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
 
@@ -137,6 +139,9 @@ if (! -e $CACHEFILE)
 	untie %dbm_hash;
 }
 
+# catch die handler
+$SIG{__DIE__} = \&close_cache_and_die;
+
 # WARNING: This has to be done *AFTER* opening threads or thread closure
 # segfault the interpreter because of double free()s
 warn("Opening Cache files...\n") if ($VERBOSE);
@@ -163,21 +168,14 @@ $INQ->end();
 $OUTQ->end();
 # joining all threads
 
-# while ->detach() threads they will shutdown automatically by
-# closing the queues.  So this message is just informational
 warn("Shutting down all threads...\n") if ($VERBOSE);
-#foreach my $thr ( threads->list() )
-#{
-#	warn("Joining thread $thr..\n") if ($DEBUG);
-#	$thr->join();
-#}
-
 warn("Closing Cache files.\n") if ($VERBOSE);
 # close out both DBs and write the new temp one over the saved one
-untie(%dbm_hash);
-untie(%thrdret);
-close DBMRW;
-close DBMRO;
+
+&close_cache();
+
+# reset die handler
+$SIG{__DIE__} = \&CORE::die;
 
 warn("Replacing old Cache file with the new one...\n") if ($VERBOSE);
 move($TMPCACHEFILE, $CACHEFILE);
@@ -208,6 +206,22 @@ if (!defined $outputfile)
 	warn("Done!\n") if ($VERBOSE);
 }
 exit(0);
+
+sub close_cache_and_die
+{
+	warn($_[0]);
+	&close_cache;
+	unlink $TMPCACHEFILE;
+	exit(1);
+}
+
+sub close_cache
+{
+	untie(%dbm_hash);
+	untie(%thrdret);
+	close DBMRW;
+	close DBMRO;
+}
 
 sub url_fetch_thread
 {
@@ -291,13 +305,15 @@ sub getepg
 	my $url;
 
 	warn(" \n") if ($VERBOSE);
+	my $nl = 0;
 	for(my $day = 0; $day < $NUMDAYS; $day++)
 	{
 		my $day = nextday($day);
 		my $id;
 		my $url = URI->new( 'https://www.yourtv.com.au/api/guide/' );
 		$url->query_form(day => $day, timezone => $REGION_TIMEZONE, format => 'json', region => $REGION);
-		warn("Getting channel program listing for $REGION_NAME ($REGION) for $day ($url)...\n") if ($VERBOSE);
+		warn(($nl ? "\n" : "" ) . "Getting channel program listing for $REGION_NAME ($REGION) for $day ($url)...\n") if ($VERBOSE);
+		$nl = 0;
 		my $res = $ua->get($url);
 		die("Unable to connect to YourTV for $url.\n") if (!$res->is_success);
 		my $tmpdata;
@@ -327,17 +343,42 @@ sub getepg
 						my $airing = $subblocks->[$airingcount]->{id};
 						warn("Starting $airing...\n") if ($DEBUG);
 						# We don't use the cache for 'today' incase of any last minute programming changes
-						if ($day eq "today" || !exists $dbm_hash{$airing} || $dbm_hash{$airing} eq "$airing|undef")
+						#
+						# but if cachetime is set, work out if we use the cache or not. (Advanced users only)
+						if (!exists $dbm_hash{$airing} || $dbm_hash{$airing} eq "$airing|undef")
 						{
 							warn("No cache data for $airing, requesting...\n") if ($DEBUG);
 							$INQ->enqueue($airing);
 							++$enqueued; # Keep track of how many fetches we do
 						} else {
-							warn("Using cache for $airing.\n") if ($DEBUG);
-							my $data = $dbm_hash{$airing};
-							warn("Got cache data for $airing.\n") if ($DEBUG);
-							$thrdret{$airing} = $data;
-							warn("Wrote cache data for $airing.\n") if ($DEBUG);
+							my $usecache = 1; # default is to use the cache
+							$usecache = 0 if ($CACHETIME eq 86400 && ($day eq "today" || $day eq "tomorrow")); # anything today is not cached if default cachetime
+							if ($usecache && $CACHETIME ne 86400)
+							{
+								if ($day eq "today" || $day eq "tomorrow")
+								{
+									# CACHETIME is non default so more complicated
+									# so we just need to know if the airing is within our cachetime
+									# however at this level the aring has just things like "5:30 AM" or "6:00 PM"
+									# so we need to do some conversions
+									my $offset = getTimeOffset($REGION_TIMEZONE, $subblocks->[$airingcount]->{date}, $day);
+									warn("Checking $offset against $CACHETIME\n") if ($DEBUG);
+									$usecache = 0 if (abs($offset) eq $offset && $CACHETIME > $offset);
+								}
+							}
+							if (!$usecache)
+							{
+								warn("Cache Data is within the last $CACHETIME seconds, ignoring cache data for $airing, requesting...[" . $subblocks->[$airingcount]->{date} . "]\n") if ($DEBUG);
+								$INQ->enqueue($airing);
+								++$enqueued; # Keep track of how many fetches we do
+							} else {
+								# we can use the cache...
+								warn("Using cache for $airing.\n") if ($DEBUG && $day eq "today");
+								my $data = $dbm_hash{$airing};
+								warn("Got cache data for $airing.\n") if ($DEBUG);
+								$thrdret{$airing} = $data;
+								warn("Wrote cache data for $airing.\n") if ($DEBUG);
+							}
 						}
 						warn("Done $airing...\n") if ($DEBUG);
 					}
@@ -353,7 +394,12 @@ sub getepg
 					warn("$airing = $result\n") if ($DEBUG);
 					$thrdret{$airing} = $result;
 				}
-				print "\n" if ($VERBOSE && $enqueued);
+				if ($VERBOSE && $enqueued)
+				{
+					local $| = 1;
+					print " ";
+					$nl++;
+				}
 				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
 				{
 					my $subblocks = $blocks->[$blockcount]->{shows};
@@ -591,7 +637,7 @@ sub toLocalTimeString
 	my $dt = DateTime->new(
 		 	year		=> $year,
 		 	month		=> $month,
-		 	day			=> $day,
+		 	day		=> $day,
 		 	hour		=> $hour,
 		 	minute		=> $min,
 		 	second		=> $sec,
@@ -622,7 +668,7 @@ sub addTime
 		my $dt = DateTime->new(
 		 	year		=> $year,
 		 	month		=> $month,
-		 	day			=> $day,
+		 	day		=> $day,
 		 	hour		=> $hour,
 		 	minute		=> $min,
 		 	second		=> $sec,
@@ -636,6 +682,27 @@ sub addTime
 	return ($returntime);
 }
 
+sub getTimeOffset
+{
+	my ($timezone, $time, $day) = @_;
+	my $dtc = DateTime->now(time_zone => $timezone); # create a new object in the timezone
+	my $dto = $dtc->clone; #DateTime->now(time_zone => $timezone); # create a new object in the timezone
+	#$dtc->now; # from_epoch(time())
+	#$dtc->time_zone($timezone); # set where we are working
+	my ($hour, $minute, $ampm) = $time =~ /^(\d+):(\d+)\s+(AM|PM)$/; # split it up
+	$dto->set_hour($hour);
+	# add 12 hours if PM and anything but 12 noon - 12:59pm (as this would push it into tomorrow)
+	$dto->add(hours => 12) if ($ampm eq "PM" and $hour ne 12);
+	$dto->add(days => 1) if ($day eq "tomorrow");
+	$dto->set_minute($minute);
+	$dto->set_second("00");
+	# add 12 hours if PM
+	my $duration = ($dto->epoch)-($dtc->epoch);
+	warn($dtc . " - " . $dto . "\n") if ($DEBUG);
+	warn($time . " --> " . $dtc->epoch . "-" . $dto->epoch . " = $duration\n") if ($DEBUG);
+	return $duration; # should be seconds (negative if before 'now')
+}
+
 sub buildregions {
 	my $url = "https://www.yourtv.com.au/guide/";
 	my $res = $ua->get($url);
@@ -644,7 +711,7 @@ sub buildregions {
 	$data =~ s/\R//g;
 	$data =~ s/.*window.regionState\s+=\s+(\[.*\]);.*/$1/;
 	my $region_json = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
-    return @$region_json;
+	return @$region_json;
 }
 
 sub nextday
