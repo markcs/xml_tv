@@ -63,7 +63,7 @@ GetOptions
 	'output=s'	=> \$outputfile,
 	'ignore=s'	=> \$ignorechannels,
 	'fvicons'	=> \$usefreeviewicons,
-	'cachefile'	=> \$CACHEFILE,
+	'cachefile=s'	=> \$CACHEFILE,
 	'cachetime=i'	=> \$CACHETIME,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
