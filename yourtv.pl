@@ -60,7 +60,7 @@ my $ua;
 my (%dbm_hash, %thrdret);
 local (*DBMRO, *DBMRW);
 
-my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $REGION, $outputfile, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef);
+my ($DEBUG, $VERBOSE, $pretty, $usefreeviewicons, $NUMDAYS, $ignorechannels, $includechannels, $REGION, $outputfile, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef);
 GetOptions
 (
 	'debug'		=> \$DEBUG,
@@ -70,8 +70,8 @@ GetOptions
 	'region=s'	=> \$REGION,
 	'output=s'	=> \$outputfile,
 	'ignore=s'	=> \$ignorechannels,
-  'include=s' => \$includechannels,
-  'fvicons'	=> \$usefreeviewicons,
+	'include=s'	=> \$includechannels,
+	'fvicons'	=> \$usefreeviewicons,
 	'cachefile=s'	=> \$CACHEFILE,
 	'cachetime=i'	=> \$CACHETIME,
 	'duplicates=s'	=> \@dupes,
@@ -117,7 +117,7 @@ die(	  "\n"
 	. "\n\n"
    ) if (!$validregion); # (!defined($REGIONS->{$REGION}));
 
-warn("Options...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $USEFREEVIEWICONS, Verbose = $VERBOSE, pretty = $pretty, \n\n") if ($VERBOSE);
+warn("Options...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $usefreeviewicons, Verbose = $VERBOSE, pretty = $pretty, \n\n") if ($VERBOSE);
 
 # Initialise here (connections to the same server will be cached)
 my @IGNORECHANNELS;
