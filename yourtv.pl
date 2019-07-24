@@ -29,6 +29,7 @@ use URI;
 use Thread::Queue;
 use Fcntl qw(:DEFAULT :flock);
 use File::Copy;
+use Clone qw( clone );
 
 use DB_File;
 
@@ -39,7 +40,12 @@ my %map = (
 );
 my $chars = join '', keys %map;
 
+my %DUPLICATE_CHANNELS = ();
+my @DUPLICATED_CHANNELS = ();
+my @dupes;
 my @CHANNELDATA;
+my @DUPECHANDATA;
+my @DUPEGUIDEDATA;
 my $FVICONS;
 my @GUIDEDATA;
 my $REGION_TIMEZONE;
@@ -65,6 +71,7 @@ GetOptions
 	'fvicons'	=> \$usefreeviewicons,
 	'cachefile=s'	=> \$CACHEFILE,
 	'cachetime=i'	=> \$CACHETIME,
+	'duplicates=s'	=> \@dupes,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
 die usage() if ($help);
@@ -72,6 +79,8 @@ die usage() if ($help);
 die(usage() ) if (!defined($REGION));
 
 $CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE eq "yourtv.db");
+
+get_duplicate_channels(@dupes) if (@dupes and scalar @dupes);
 
 if ($FURL_OK)
 {
@@ -155,7 +164,10 @@ open DBMRW, "+<&=$fdrw" or die "Could not dup DBMRW for lock: $!";	# Get dup fil
 flock DBMRW, LOCK_EX;							# Lock it exclusively
 undef $dbrw;
 
+warn("Getting Channel list...\n") if ($VERBOSE);
 getchannels($ua);
+warn(Dumper(@DUPECHANDATA));
+warn("Getting EPG data...\n") if ($VERBOSE);
 getepg($ua);
 
 warn("Closing Queues...\n") if ($VERBOSE);
@@ -273,10 +285,13 @@ sub getchannels
 	die("Unable to connect to FreeView.\n") if (!$res->is_success);
 
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
+	my $dupe_count = 0;
 
 	for (my $count = 0; $count < @$tmpchanneldata; $count++)
 	{
-        next if ( ( grep( /^$tmpchanneldata->[$count]->{number}$/, @IGNORECHANNELS ) ) );
+		next if ( ( grep( /^$tmpchanneldata->[$count]->{id}$/, @IGNORECHANNELS ) ) );
+		my $channelIsDuped = 0;
+		++$channelIsDuped if ( ( grep( /$tmpchanneldata->[$count]->{number}$/, @DUPLICATED_CHANNELS ) ) );
 		$CHANNELDATA[$count]->{tv_id} = $tmpchanneldata->[$count]->{id};
 		$CHANNELDATA[$count]->{name} = $tmpchanneldata->[$count]->{description};
 		$CHANNELDATA[$count]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
@@ -284,11 +299,26 @@ sub getchannels
 		$CHANNELDATA[$count]->{icon} = $tmpchanneldata->[$count]->{logo}->{url};
 		$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
 		#FIX SBS ICONS
-		if (($usefreeviewicons) && (!defined($CHANNELDATA[$count]->{icon})) && ($CHANNELDATA[$count]->{name} =~ /SBS/)) {
+		if (($usefreeviewicons) && (!defined($CHANNELDATA[$count]->{icon})) && ($CHANNELDATA[$count]->{name} =~ /SBS/))
+		{
 			$tmpchanneldata->[$count]->{number} =~ s/(\d)./$1/;
 			$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
 		}
-		warn("Got channel $CHANNELDATA[$count]->{id} - $CHANNELDATA[$count]->{name}  ...\n") if ($VERBOSE);
+		warn("Got channel $CHANNELDATA[$count]->{id} - $CHANNELDATA[$count]->{name} ...\n") if ($VERBOSE);
+		if ($channelIsDuped)
+		{
+			foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
+			{
+				next if ($DUPLICATE_CHANNELS{$dchan} ne $tmpchanneldata->[$count]->{number});
+				$DUPECHANDATA[$dupe_count]->{tv_id} = $CHANNELDATA[$count]->{tv_id};
+				$DUPECHANDATA[$dupe_count]->{name} = $CHANNELDATA[$count]->{name};
+				$DUPECHANDATA[$dupe_count]->{id} = $dchan . ".yourtv.com.au";
+				$DUPECHANDATA[$dupe_count]->{lcn} = $dchan;
+				$DUPECHANDATA[$dupe_count]->{icon} = $CHANNELDATA[$count]->{icon};
+				warn("Duplicated channel $CHANNELDATA[$count]->{name} -> $DUPECHANDATA[$dupe_count]->{id} ...\n") if ($VERBOSE);
+				++$dupe_count;
+			}
+		}
 	}
 }
 
@@ -296,6 +326,7 @@ sub getepg
 {
 	my $ua = shift;
 	my $showcount = 0;
+	my $dupe_scount = 0;
 	my $url;
 
 	warn(" \n") if ($VERBOSE);
@@ -323,6 +354,8 @@ sub getepg
 			{
 				next if (!defined($chandata->[$channelcount]->{number}));
 				next if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @IGNORECHANNELS ) ) );
+				my $channelIsDuped = 0;
+				$channelIsDuped = $chandata->[$channelcount]->{number} if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @DUPLICATED_CHANNELS ) ) );
 
 				my $enqueued = 0;
 				$id = $chandata->[$channelcount]->{number}.".yourtv.com.au";
@@ -489,6 +522,19 @@ sub getepg
 								$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
 								$GUIDEDATA[$showcount]->{previouslyshown} = "$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
 							}
+							if ($channelIsDuped)
+							{
+								foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
+								{
+									next if ($DUPLICATE_CHANNELS{$dchan} ne $channelIsDuped);
+									my $did = $dchan . ".yourtv.com.au";
+									$DUPEGUIDEDATA[$dupe_scount] = clone($GUIDEDATA[$showcount]);
+									$DUPEGUIDEDATA[$dupe_scount]->{id} = $did;
+									$DUPEGUIDEDATA[$dupe_scount]->{channel} = $did;
+									warn("Duplicated guide data for show entry $showcount -> $dupe_scount ($GUIDEDATA[$showcount] -> $DUPEGUIDEDATA[$dupe_scount]) ...\n") if ($DEBUG);
+									++$dupe_scount;
+								}
+							}
 							$showcount++;
 						}
 					}
@@ -502,7 +548,7 @@ sub getepg
 sub printchannels
 {
 	my ($XMLRef) = @_;
-	foreach my $channel (@CHANNELDATA)
+	foreach my $channel (@CHANNELDATA, @DUPECHANDATA)
 	{
 		$XML->startTag('channel', 'id' => $channel->{id});
 		$XML->dataElement('display-name', $channel->{name});
@@ -516,7 +562,7 @@ sub printchannels
 sub printepg
 {
 	my ($XMLRef) = @_;
-	foreach my $items (@GUIDEDATA)
+	foreach my $items (@GUIDEDATA, @DUPEGUIDEDATA)
 	{
 		my $movie = 0;
 		my $originalairdate = "";
@@ -735,6 +781,29 @@ sub getFVIcons
 	}
 }
 
+sub get_duplicate_channels
+{
+	foreach my $dupe (@_)
+	{
+		my ($original, $dupes) = split(/=/, $dupe);
+		if (!defined $dupes || !length $dupes)
+		{
+			warn("WARNING: Ignoring --duplicate $dupe as it is not in the correct format (should be: --duplicate 6=60,61)\n");
+			next;
+		}
+		my @channels = split(/,/, $dupes);
+		if (!@channels || !scalar @channels)
+		{
+			warn("WARNING: Ignoring --duplicate $dupe as it is not in the correct format (should be: --duplicate 6=60,61,... etc)\n");
+			next;
+		}
+		push(@DUPLICATED_CHANNELS, $original);
+		foreach my $channel (@channels)
+		{
+			$DUPLICATE_CHANNELS{$channel} = $original;
+		}
+	}
+}
 
 sub usage
 {
@@ -746,6 +815,7 @@ sub usage
 		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
 		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
 		. "\t--ignore=<channel to ignore>\tA comma separated list of channel numbers to ignore. The channel number is matched against the lcn tag within the xml.\n"
+		. "\t--duplicates <channel1>=<channel2>,<channel3>\tMaybe specified more than once, this will create a guide where different channels have the same data.\n"
 		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
 		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
 		. "\t--help\t\t\t\tWill print this usage and exit!\n"
