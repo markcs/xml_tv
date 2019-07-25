@@ -33,8 +33,6 @@ use Clone qw( clone );
 
 use DB_File;
 
-use Data::Dumper;
-
 my %map = (
 	 '&' => 'and',
 );
@@ -170,7 +168,6 @@ undef $dbrw;
 
 warn("Getting Channel list...\n") if ($VERBOSE);
 getchannels($ua);
-warn(Dumper(@DUPECHANDATA));
 warn("Getting EPG data...\n") if ($VERBOSE);
 getepg($ua);
 
