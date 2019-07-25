@@ -32,8 +32,6 @@ use File::Copy;
 
 use DB_File;
 
-use Data::Dumper;
-
 my %map = (
 	 '&' => 'and',
 );
