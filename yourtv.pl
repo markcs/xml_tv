@@ -42,7 +42,6 @@ my $chars = join '', keys %map;
 my @CHANNELDATA;
 my $FVICONS;
 my $DVBTRIPLET;
-my $FVICONURL;
 my @GUIDEDATA;
 my $REGION_TIMEZONE;
 my $REGION_NAME;
@@ -133,8 +132,6 @@ for (1 .. $MAX_THREADS)
 	warn("Started thread $_...\n") if ($DEBUG);
 }
 
-### START FV DATA
-
 if (! -e $FVCACHEFILE)
 {
 	warn("Freeview cache file not present/readable, this run will be slower than normal...\n");
@@ -158,7 +155,6 @@ my $fvfdrw = $fvdbrw->fd;							# get file desc
 open FVDBMRW, "+<&=$fvfdrw" or die "Could not dup DBMRW for lock: $!";	# Get dup filehandle
 flock FVDBMRW, LOCK_EX;							# Lock it exclusively
 undef $fvdbrw;
-### END FV DATA
 
 if (! -e $CACHEFILE)
 {
@@ -346,7 +342,6 @@ sub getepg
 	{
 		my $day = nextday($day);
 		my $id;
-		my $lcn;
 		my $url = URI->new( 'https://www.yourtv.com.au/api/guide/' );
 		$url->query_form(day => $day, timezone => $REGION_TIMEZONE, format => 'json', region => $REGION);
 		warn(($nl ? "\n" : "" ) . "Getting channel program listing for $REGION_NAME ($REGION) for $day ($url)...\n") if ($VERBOSE);
@@ -370,7 +365,6 @@ sub getepg
 
 				my $enqueued = 0;
 				$id = $chandata->[$channelcount]->{number}.".yourtv.com.au";
-				$lcn = $chandata->[$channelcount]->{number};
 				my $blocks = $chandata->[$channelcount]->{blocks};
 				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
 				{
@@ -488,16 +482,13 @@ sub getepg
 							}
 							else
 							{
-								#if (!(exists ($fvdbm_hash{$showdata->{service}->{description}}->{$GUIDEDATA[$showcount]->{title}})))
 								my $hash = "$chandata->[$channelcount]->{number} - $showdata->{title}";
-
 								if (! (defined ($fvdbm_hash{$hash} ) ) )
 								{
 									$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop})
 								}
 								else
 								{
-									#$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop})
 									warn("Cached icon found for $hash\n") if ($VERBOSE);
 									$GUIDEDATA[$showcount]->{url} = $fvdbm_hash{hash};
 								}
@@ -819,7 +810,6 @@ sub getFVShowIcon
 		{
 			if ($tmpchanneldata->[$count]->{related}->{shows}[0]->{title} =~ /$title/i)
 			{
-				$FVICONURL->{$lcn}->{$title} = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
 				$returnurl = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
 				$fvthrdret{$hash} = $returnurl;
 				warn("FV Icon found for show $hash") if ($VERBOSE);
@@ -827,7 +817,6 @@ sub getFVShowIcon
 			}
 			elsif ($tmpchanneldata->[$count]->{related}->{episodes}[0]->{title} =~ /$title/i)
 			{
-				$FVICONURL->{$lcn}->{$title} = $tmpchanneldata->[$count]->{related}->{episodes}[0]->{images}[0]->{url};
 				$returnurl = $tmpchanneldata->[$count]->{related}->{episodes}[0]->{images}[0]->{url};
 				$fvthrdret{$hash} = $returnurl;
 				warn("FV Icon found for episode $hash") if ($VERBOSE);
