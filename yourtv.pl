@@ -818,7 +818,7 @@ sub getFVShowIcon
 			{
 				$returnurl = $tmpchanneldata->[$count]->{related}->{episodes}[0]->{images}[0]->{url};
 				$fvthrdret{$hash} = $returnurl;
-				warn("FV Icon found for episode $hash") if ($VERBOSE);
+				print "+" if ($VERBOSE);
 				return $returnurl;
 			}
 		}
