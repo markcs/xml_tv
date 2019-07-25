@@ -489,7 +489,6 @@ sub getepg
 								}
 								else
 								{
-									warn("Cached icon found for $hash\n") if ($VERBOSE);
 									$fvthrdret{$hash} = $fvdbm_hash{$hash};
 									$GUIDEDATA[$showcount]->{url} = $fvdbm_hash{$hash};
 								}
@@ -814,7 +813,7 @@ sub getFVShowIcon
 			{
 				$returnurl = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
 				$fvthrdret{$hash} = $returnurl;
-				warn("FV Icon found for show $hash") if ($VERBOSE);
+				print "+" if ($VERBOSE);
 				return $returnurl;
 			}
 			elsif ($tmpchanneldata->[$count]->{related}->{episodes}[0]->{title} =~ /$title/i)
