@@ -491,7 +491,7 @@ sub getepg
 								{
 									warn("Cached icon found for $hash\n") if ($VERBOSE);
 									$fvthrdret{$hash} = $fvdbm_hash{$hash};
-									$GUIDEDATA[$showcount]->{url} = $fvdbm_hash{hash};
+									$GUIDEDATA[$showcount]->{url} = $fvdbm_hash{$hash};
 								}
 							}
 							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{genre}->{name});
