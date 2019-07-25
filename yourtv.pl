@@ -46,12 +46,15 @@ my $FVICONURL;
 my @GUIDEDATA;
 my $REGION_TIMEZONE;
 my $REGION_NAME;
+my $FVCACHEFILE = "fv.db";
+my $FVTMPCACHEFILE = ".freeview-tmp-cache.db";
 my $CACHEFILE = "yourtv.db";
 my $CACHETIME = 86400; # 1 day - don't change this unless you know what you are doing.
 my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
 my $ua;
 
 my (%dbm_hash, %thrdret);
+my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
 my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $REGION, $outputfile, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef);
@@ -130,6 +133,33 @@ for (1 .. $MAX_THREADS)
 	warn("Started thread $_...\n") if ($DEBUG);
 }
 
+### START FV DATA
+
+if (! -e $FVCACHEFILE)
+{
+	warn("Freeview cache file not present/readable, this run will be slower than normal...\n");
+	# Create a new and empty file so this doesn't fail
+	tie %fvdbm_hash, "DB_File", $FVCACHEFILE, O_CREAT | O_RDWR, 0644 or
+		die("Cannot write to $FVCACHEFILE");
+	untie %fvdbm_hash;
+}
+
+warn("Opening Freeview cache files...\n") if ($VERBOSE);
+my $fvdbro = tie %fvdbm_hash, "DB_File", $FVCACHEFILE, O_RDONLY, 0644 or
+		die("Cannot open $FVCACHEFILE");
+my $fvfdro = $fvdbro->fd;							# get file desc
+open FVDBMRO, "+<&=$fvfdro" or die "Could not dup DBMRO for lock: $!";	# Get dup filehandle
+flock FVDBMRO, LOCK_EX;							# Lock it exclusively
+undef $fvdbro;
+
+my $fvdbrw = tie %fvthrdret,  "DB_File", $FVTMPCACHEFILE, O_CREAT | O_RDWR, 0644 or
+		die("Cannot write to $FVTMPCACHEFILE");
+my $fvfdrw = $fvdbrw->fd;							# get file desc
+open FVDBMRW, "+<&=$fvfdrw" or die "Could not dup DBMRW for lock: $!";	# Get dup filehandle
+flock FVDBMRW, LOCK_EX;							# Lock it exclusively
+undef $fvdbrw;
+### END FV DATA
+
 if (! -e $CACHEFILE)
 {
 	warn("Cache file not present/readable, this run will be slower than normal...\n");
@@ -179,6 +209,7 @@ $SIG{__DIE__} = \&CORE::die;
 
 warn("Replacing old Cache file with the new one...\n") if ($VERBOSE);
 move($TMPCACHEFILE, $CACHEFILE);
+move($FVTMPCACHEFILE, $FVCACHEFILE);
 
 warn("Starting to build the XML...\n") if ($VERBOSE);
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
@@ -212,6 +243,7 @@ sub close_cache_and_die
 	warn($_[0]);
 	&close_cache;
 	unlink $TMPCACHEFILE;
+	unlink $FVTMPCACHEFILE;
 	exit(1);
 }
 
@@ -219,8 +251,12 @@ sub close_cache
 {
 	untie(%dbm_hash);
 	untie(%thrdret);
+	untie(%fvdbm_hash);
+	untie(%fvthrdret);
 	close DBMRW;
 	close DBMRO;
+	close FVDBMRW;
+	close FVDBMRO;
 }
 
 sub url_fetch_thread
@@ -310,6 +346,7 @@ sub getepg
 	{
 		my $day = nextday($day);
 		my $id;
+		my $lcn;
 		my $url = URI->new( 'https://www.yourtv.com.au/api/guide/' );
 		$url->query_form(day => $day, timezone => $REGION_TIMEZONE, format => 'json', region => $REGION);
 		warn(($nl ? "\n" : "" ) . "Getting channel program listing for $REGION_NAME ($REGION) for $day ($url)...\n") if ($VERBOSE);
@@ -333,6 +370,7 @@ sub getepg
 
 				my $enqueued = 0;
 				$id = $chandata->[$channelcount]->{number}.".yourtv.com.au";
+				$lcn = $chandata->[$channelcount]->{number};
 				my $blocks = $chandata->[$channelcount]->{blocks};
 				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
 				{
@@ -450,13 +488,18 @@ sub getepg
 							}
 							else
 							{
-								if (defined($FVICONURL->{$chandata->[$channelcount]->{number}}->{$GUIDEDATA[$showcount]->{title}}))
+								#if (!(exists ($fvdbm_hash{$showdata->{service}->{description}}->{$GUIDEDATA[$showcount]->{title}})))
+								my $hash = "$chandata->[$channelcount]->{number} - $showdata->{title}";
+
+								if (! (defined ($fvdbm_hash{$hash} ) ) )
 								{
-									$GUIDEDATA[$showcount]->{url} = $FVICONURL->{$chandata->[$channelcount]->{number}}->{$GUIDEDATA[$showcount]->{title}}
+									$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop})
 								}
 								else
 								{
-									$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop})
+									#$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop})
+									warn("Cached icon found for $hash\n") if ($VERBOSE);
+									$GUIDEDATA[$showcount]->{url} = $fvdbm_hash{hash};
 								}
 							}
 							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{genre}->{name});
@@ -743,7 +786,7 @@ sub getFVShowIcon
 	my ($lcn,$title,$startTime,$stopTime) = @_;
 	my $dvb_triplet = $DVBTRIPLET->{$lcn};
 	return if (!defined($dvb_triplet));
-
+	my $hash = "$lcn - $title";
 	my $returnurl = "";
 	my ($year, $month, $day, $hour, $min, $sec, $offset) = $startTime =~ /(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s+(.*)/;#S$1E$2$3$4$5$6$7/;
 
@@ -774,15 +817,20 @@ sub getFVShowIcon
 	{
 		for (my $count = 0; $count < @$tmpchanneldata; $count++)
 		{
-			$FVICONURL->{$lcn}->{$title} = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
 			if ($tmpchanneldata->[$count]->{related}->{shows}[0]->{title} =~ /$title/i)
 			{
+				$FVICONURL->{$lcn}->{$title} = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
 				$returnurl = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
+				$fvthrdret{$hash} = $returnurl;
+				warn("FV Icon found for show $hash") if ($VERBOSE);
 				return $returnurl;
 			}
 			elsif ($tmpchanneldata->[$count]->{related}->{episodes}[0]->{title} =~ /$title/i)
 			{
+				$FVICONURL->{$lcn}->{$title} = $tmpchanneldata->[$count]->{related}->{episodes}[0]->{images}[0]->{url};
 				$returnurl = $tmpchanneldata->[$count]->{related}->{episodes}[0]->{images}[0]->{url};
+				$fvthrdret{$hash} = $returnurl;
+				warn("FV Icon found for episode $hash") if ($VERBOSE);
 				return $returnurl;
 			}
 		}
