@@ -481,14 +481,34 @@ sub getepg
 							else
 							{
 								my $hash = "$chandata->[$channelcount]->{number} - $showdata->{title}";
-								if (! (defined ($fvdbm_hash{$hash} ) ) )
+
+								my $usefvcache = 1;
+								$usefvcache = 0 if ($CACHETIME eq 86400 && ($day eq "today" || $day eq "tomorrow")); # anything today is not cached if default cachetime
+								#print "$usefvcache $CACHETIME eq 86400 && ($day eq today || $day eq tomorrow\n";
+								if (($usefvcache) && ($CACHETIME ne 86400))
 								{
-									$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop})
+									if ($day eq "today" || $day eq "tomorrow")
+									{
+										my $offset = getTimeOffset($REGION_TIMEZONE, $subblocks->[$airingcount]->{date}, $day);
+										warn("Checking $offset against $CACHETIME\n") if ($DEBUG);
+										$usefvcache = 0 if (abs($offset) eq $offset && $CACHETIME > $offset);
+									}
 								}
-								else
+								#print "$usefvcache\n";
+								if (!$usefvcache)
 								{
-									$fvthrdret{$hash} = $fvdbm_hash{$hash};
-									$GUIDEDATA[$showcount]->{url} = $fvdbm_hash{$hash};
+									$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop});
+								}
+								else {
+									if (((defined ($fvdbm_hash{$hash} ) ) ) and ($usefvcache))
+									{
+										$fvthrdret{$hash} = $fvdbm_hash{$hash};
+										$GUIDEDATA[$showcount]->{url} = $fvdbm_hash{$hash};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop});
+									}
 								}
 							}
 							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{genre}->{name});
