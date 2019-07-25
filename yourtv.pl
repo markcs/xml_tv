@@ -490,10 +490,12 @@ sub getepg
 								else
 								{
 									warn("Cached icon found for $hash\n") if ($VERBOSE);
+									$fvthrdret{$hash} = $fvdbm_hash{$hash};
 									$GUIDEDATA[$showcount]->{url} = $fvdbm_hash{hash};
 								}
 							}
 							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{genre}->{name});
+							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{subGenre}->{name}) if (defined($showdata->{subGenre}->{name}));
 							#	program types as defined by yourtv $showdata->{programType}->{id}
 							#	1	 Television movie
 							#	2	 Cinema movie
