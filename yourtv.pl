@@ -46,16 +46,18 @@ my @DUPECHANDATA;
 my @DUPEGUIDEDATA;
 my $FVICONS;
 my $DVBTRIPLET;
-my $FVICONURL;
 my @GUIDEDATA;
 my $REGION_TIMEZONE;
 my $REGION_NAME;
+my $FVCACHEFILE = "fv.db";
+my $FVTMPCACHEFILE = ".freeview-tmp-cache.db";
 my $CACHEFILE = "yourtv.db";
 my $CACHETIME = 86400; # 1 day - don't change this unless you know what you are doing.
 my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
 my $ua;
 
 my (%dbm_hash, %thrdret);
+my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
 my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $REGION, $outputfile, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef);
@@ -137,6 +139,30 @@ for (1 .. $MAX_THREADS)
 	warn("Started thread $_...\n") if ($DEBUG);
 }
 
+if (! -e $FVCACHEFILE)
+{
+	warn("Freeview cache file not present/readable, this run will be slower than normal...\n");
+	# Create a new and empty file so this doesn't fail
+	tie %fvdbm_hash, "DB_File", $FVCACHEFILE, O_CREAT | O_RDWR, 0644 or
+		die("Cannot write to $FVCACHEFILE");
+	untie %fvdbm_hash;
+}
+
+warn("Opening Freeview cache files...\n") if ($VERBOSE);
+my $fvdbro = tie %fvdbm_hash, "DB_File", $FVCACHEFILE, O_RDONLY, 0644 or
+		die("Cannot open $FVCACHEFILE");
+my $fvfdro = $fvdbro->fd;							# get file desc
+open FVDBMRO, "+<&=$fvfdro" or die "Could not dup DBMRO for lock: $!";	# Get dup filehandle
+flock FVDBMRO, LOCK_EX;							# Lock it exclusively
+undef $fvdbro;
+
+my $fvdbrw = tie %fvthrdret,  "DB_File", $FVTMPCACHEFILE, O_CREAT | O_RDWR, 0644 or
+		die("Cannot write to $FVTMPCACHEFILE");
+my $fvfdrw = $fvdbrw->fd;							# get file desc
+open FVDBMRW, "+<&=$fvfdrw" or die "Could not dup DBMRW for lock: $!";	# Get dup filehandle
+flock FVDBMRW, LOCK_EX;							# Lock it exclusively
+undef $fvdbrw;
+
 if (! -e $CACHEFILE)
 {
 	warn("Cache file not present/readable, this run will be slower than normal...\n");
@@ -188,6 +214,7 @@ $SIG{__DIE__} = \&CORE::die;
 
 warn("Replacing old Cache file with the new one...\n") if ($VERBOSE);
 move($TMPCACHEFILE, $CACHEFILE);
+move($FVTMPCACHEFILE, $FVCACHEFILE);
 
 warn("Starting to build the XML...\n") if ($VERBOSE);
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
@@ -221,6 +248,7 @@ sub close_cache_and_die
 	warn($_[0]);
 	&close_cache;
 	unlink $TMPCACHEFILE;
+	unlink $FVTMPCACHEFILE;
 	exit(1);
 }
 
@@ -228,8 +256,12 @@ sub close_cache
 {
 	untie(%dbm_hash);
 	untie(%thrdret);
+	untie(%fvdbm_hash);
+	untie(%fvthrdret);
 	close DBMRW;
 	close DBMRO;
+	close FVDBMRW;
+	close FVDBMRO;
 }
 
 sub url_fetch_thread
@@ -479,16 +511,10 @@ sub getepg
 							}
 							else
 							{
-								if (defined($FVICONURL->{$chandata->[$channelcount]->{number}}->{$GUIDEDATA[$showcount]->{title}}))
-								{
-									$GUIDEDATA[$showcount]->{url} = $FVICONURL->{$chandata->[$channelcount]->{number}}->{$GUIDEDATA[$showcount]->{title}}
-								}
-								else
-								{
-									$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop})
-								}
+								$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop});
 							}
 							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{genre}->{name});
+							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{subGenre}->{name}) if (defined($showdata->{subGenre}->{name}));
 							#	program types as defined by yourtv $showdata->{programType}->{id}
 							#	1	 Television movie
 							#	2	 Cinema movie
@@ -500,75 +526,76 @@ sub getepg
 							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
 							my ($episodeYear, $episodeMonth, $episodeDay, $episodeHour, $episodeMinute) = $tmpseries =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/;#S$1E$2$3$4$5/;
 
-							#if ($showdata->{programType}->{id} eq "1") {
-							if ($showdata->{program}->{programTypeId} eq "1") {
-								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "2") {
-								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "3") {
-								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
-								$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
-								$GUIDEDATA[$showcount]->{season} = "1";
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "4") {
-								$GUIDEDATA[$showcount]->{premiere} = "1";
-								$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
-								if (defined($showdata->{episodeNumber}))
+							if (defined($showdata->{program}->{programTypeId})) {
+								if ($showdata->{program}->{programTypeId} eq "1") {
+									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+								}
+								elsif ($showdata->{program}->{programTypeId} eq "2") {
+									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+								}
+								elsif ($showdata->{program}->{programTypeId} eq "3") {
+									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
+									$GUIDEDATA[$showcount]->{season} = "1";
+								}
+								elsif ($showdata->{program}->{programTypeId} eq "4") {
+									$GUIDEDATA[$showcount]->{premiere} = "1";
+									$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
+									if (defined($showdata->{episodeNumber}))
+									{
+										$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									}
+									if (defined($showdata->{seriesNumber})) {
+										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{season} = $episodeYear;
+									}
+								}
+								elsif ($showdata->{program}->{programTypeId} eq "5")
 								{
-									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+									if (defined($showdata->{seriesNumber})) {
+										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{season} = $episodeYear;
+									}
+									if (defined($showdata->{episodeNumber})) {
+										$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									}
 								}
-								else
+								elsif ($showdata->{program}->{programTypeId} eq "8")
 								{
-									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									if (defined($showdata->{seriesNumber})) {
+										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{season} = $episodeYear;
+									}
+									if (defined($showdata->{episodeNumber})) {
+										$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									}
 								}
-								if (defined($showdata->{seriesNumber})) {
-									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
-								}
-								else
+								elsif ($showdata->{program}->{programTypeId} eq "9")
 								{
 									$GUIDEDATA[$showcount]->{season} = $episodeYear;
-								}
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "5")
-							{
-								if (defined($showdata->{seriesNumber})) {
-									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
-								}
-								else
-								{
-									$GUIDEDATA[$showcount]->{season} = $episodeYear;
-								}
-								if (defined($showdata->{episodeNumber})) {
-									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
-								}
-								else
-								{
 									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 								}
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "8")
-							{
-								if (defined($showdata->{seriesNumber})) {
-									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
-								}
-								else
-								{
-									$GUIDEDATA[$showcount]->{season} = $episodeYear;
-								}
-								if (defined($showdata->{episodeNumber})) {
-									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
-								}
-								else
-								{
-									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
-								}
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "9")
-							{
-								$GUIDEDATA[$showcount]->{season} = $episodeYear;
-								$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 							}
 							if (defined($showdata->{repeat} ) )
 							{
@@ -785,7 +812,6 @@ sub getFVShowIcon
 	my ($lcn,$title,$startTime,$stopTime) = @_;
 	my $dvb_triplet = $DVBTRIPLET->{$lcn};
 	return if (!defined($dvb_triplet));
-
 	my $returnurl = "";
 	my ($year, $month, $day, $hour, $min, $sec, $offset) = $startTime =~ /(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s+(.*)/;#S$1E$2$3$4$5$6$7/;
 
@@ -799,24 +825,36 @@ sub getFVShowIcon
 		 	nanosecond	=> 0,
 		 	time_zone	=> $offset,
 		);
-	$dt->set_time_zone(  "GMT" );
-
-
+	$dt->set_time_zone(  "UTC" );
 	$startTime = $dt->ymd('-') . 'T' . $dt->hms(':') . 'Z';
 	my $stopdt = $dt + DateTime::Duration->new( hours => 24 );
-
 	$stopTime = $stopdt->ymd('-') . 'T' . $stopdt->hms(':') . 'Z';
-	my $url = "https://fvau-api-prod.switch.tv/content/v1/epgs/".$dvb_triplet."?start=".$startTime."&end=".$stopTime."&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
-	my $res = $ua->get($url);
-	die("Unable to connect to FreeView.\n") if (!$res->is_success);
-	my $data = $res->content;
+	my $hash = "$dvb_triplet - $startTime";
+	my $data;
+	if (defined ($fvdbm_hash{$hash} ))
+	{
+		$fvthrdret{$hash} = $fvdbm_hash{$hash};
+		$data = $fvdbm_hash{$hash};
+	}
+	elsif (defined($fvthrdret{$hash}))
+	{
+		$data = $fvthrdret{$hash};
+	}
+	else
+	{
+		my $url = "https://fvau-api-prod.switch.tv/content/v1/epgs/".$dvb_triplet."?start=".$startTime."&end=".$stopTime."&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
+		my $res = $ua->get($url);
+		die("Unable to connect to FreeView.\n") if (!$res->is_success);
+		$data = $res->content;
+		$fvthrdret{$hash} = $data;
+		print "+" if ($VERBOSE);
+	}
 	my $tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 	$tmpchanneldata = $tmpchanneldata->{data};
 	if (defined($tmpchanneldata))
 	{
 		for (my $count = 0; $count < @$tmpchanneldata; $count++)
 		{
-			$FVICONURL->{$lcn}->{$title} = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
 			if ($tmpchanneldata->[$count]->{related}->{shows}[0]->{title} =~ /$title/i)
 			{
 				$returnurl = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
@@ -839,45 +877,55 @@ sub getFVInfo
 	my @fvregions = (
 		"region_national",
 		"region_nsw_sydney",
-#		"region_nsw_newcastle",
-#		"region_nsw_taree",
+		"region_nsw_newcastle",
+		"region_nsw_taree",
 		"region_nsw_tamworth",
-#		"region_nsw_orange_dubbo_wagga",
+		"region_nsw_orange_dubbo_wagga",
 		"region_nsw_northern_rivers",
-#		"region_nsw_wollongong",
+		"region_nsw_wollongong",
 		"region_nsw_canberra",
 		"region_nt_regional",
-#		"region_vic_albury",
-#		"region_vic_shepparton",
+		"region_vic_albury",
+		"region_vic_shepparton",
 		"region_vic_bendigo",
 		"region_vic_melbourne",
-#		"region_vic_ballarat",
-#		"region_vic_gippsland",
+		"region_vic_ballarat",
+		"region_vic_gippsland",
 		"region_qld_brisbane",
-#		"region_qld_goldcoast",
+		"region_qld_goldcoast",
 		"region_qld_toowoomba",
-#		"region_qld_maryborough",
-#		"region_qld_widebay",
-#		"region_qld_rockhampton",
-#		"region_qld_mackay",
-#		"region_qld_townsville",
-#		"region_qld_cairns",
+		"region_qld_maryborough",
+		"region_qld_widebay",
+		"region_qld_rockhampton",
+		"region_qld_mackay",
+		"region_qld_townsville",
+		"region_qld_cairns",
 		"region_sa_adelaide",
 		"region_sa_regional",
 		"region_wa_perth",
 		"region_wa_regional_wa",
-#		"region_tas_hobart",
+		"region_tas_hobart",
 		"region_tas_launceston",
 	);
 
 	foreach my $fvregion (@fvregions)
 	{
-		my $url = "https://fvau-api-prod.switch.tv/content/v1/channels/region/" . $fvregion
-			. "?limit=100&offset=0&include_related=1&expand_related=full&related_entity_types=images";
-		my $res = $ua->get($url);
+		my $data;
+		if (defined ($fvdbm_hash{$fvregion} ))
+		{
+			$fvthrdret{$fvregion} = $fvdbm_hash{$fvregion};
+			$data = $fvdbm_hash{$fvregion};
+		}
+		else
+		{
+			my $url = "https://fvau-api-prod.switch.tv/content/v1/channels/region/" . $fvregion
+				. "?limit=100&offset=0&include_related=1&expand_related=full&related_entity_types=images";
+			my $res = $ua->get($url);
 
-		die("Unable to connect to FreeView.\n") if (!$res->is_success);
-		my $data = $res->content;
+			die("Unable to connect to FreeView.\n") if (!$res->is_success);
+			$data = $res->content;
+			$fvthrdret{$fvregion} = $data;
+		}
 		my $tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 		$tmpchanneldata = $tmpchanneldata->{data};
 		for (my $count = 0; $count < @$tmpchanneldata; $count++)
