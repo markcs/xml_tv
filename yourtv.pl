@@ -495,75 +495,76 @@ sub getepg
 							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
 							my ($episodeYear, $episodeMonth, $episodeDay, $episodeHour, $episodeMinute) = $tmpseries =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/;#S$1E$2$3$4$5/;
 
-							#if ($showdata->{programType}->{id} eq "1") {
-							if ($showdata->{program}->{programTypeId} eq "1") {
-								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "2") {
-								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "3") {
-								push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
-								$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
-								$GUIDEDATA[$showcount]->{season} = "1";
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "4") {
-								$GUIDEDATA[$showcount]->{premiere} = "1";
-								$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
-								if (defined($showdata->{episodeNumber}))
+							if (defined($showdata->{program}->{programTypeId})) {
+								if ($showdata->{program}->{programTypeId} eq "1") {
+									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+								}
+								elsif ($showdata->{program}->{programTypeId} eq "2") {
+									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+								}
+								elsif ($showdata->{program}->{programTypeId} eq "3") {
+									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
+									$GUIDEDATA[$showcount]->{season} = "1";
+								}
+								elsif ($showdata->{program}->{programTypeId} eq "4") {
+									$GUIDEDATA[$showcount]->{premiere} = "1";
+									$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
+									if (defined($showdata->{episodeNumber}))
+									{
+										$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									}
+									if (defined($showdata->{seriesNumber})) {
+										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{season} = $episodeYear;
+									}
+								}
+								elsif ($showdata->{program}->{programTypeId} eq "5")
 								{
-									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+									if (defined($showdata->{seriesNumber})) {
+										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{season} = $episodeYear;
+									}
+									if (defined($showdata->{episodeNumber})) {
+										$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									}
 								}
-								else
+								elsif ($showdata->{program}->{programTypeId} eq "8")
 								{
-									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									if (defined($showdata->{seriesNumber})) {
+										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{season} = $episodeYear;
+									}
+									if (defined($showdata->{episodeNumber})) {
+										$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+									}
+									else
+									{
+										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									}
 								}
-								if (defined($showdata->{seriesNumber})) {
-									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
-								}
-								else
+								elsif ($showdata->{program}->{programTypeId} eq "9")
 								{
 									$GUIDEDATA[$showcount]->{season} = $episodeYear;
-								}
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "5")
-							{
-								if (defined($showdata->{seriesNumber})) {
-									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
-								}
-								else
-								{
-									$GUIDEDATA[$showcount]->{season} = $episodeYear;
-								}
-								if (defined($showdata->{episodeNumber})) {
-									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
-								}
-								else
-								{
 									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 								}
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "8")
-							{
-								if (defined($showdata->{seriesNumber})) {
-									$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
-								}
-								else
-								{
-									$GUIDEDATA[$showcount]->{season} = $episodeYear;
-								}
-								if (defined($showdata->{episodeNumber})) {
-									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
-								}
-								else
-								{
-									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
-								}
-							}
-							elsif ($showdata->{program}->{programTypeId} eq "9")
-							{
-								$GUIDEDATA[$showcount]->{season} = $episodeYear;
-								$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 							}
 							if (defined($showdata->{repeat} ) )
 							{
