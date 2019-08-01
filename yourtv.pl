@@ -30,6 +30,7 @@ use Thread::Queue;
 use Fcntl qw(:DEFAULT :flock);
 use File::Copy;
 use Clone qw( clone );
+use Cwd qw( getcwd );
 
 use DB_File;
 
@@ -50,7 +51,7 @@ my @GUIDEDATA;
 my $REGION_TIMEZONE;
 my $REGION_NAME;
 my $FVCACHEFILE = "fv.db";
-my $FVTMPCACHEFILE = ".freeview-tmp-cache.db";
+my $FVTMPCACHEFILE = ".$$.freeview-tmp-cache.db";
 my $CACHEFILE = "yourtv.db";
 my $CACHETIME = 86400; # 1 day - don't change this unless you know what you are doing.
 my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
@@ -70,8 +71,8 @@ GetOptions
 	'region=s'	=> \$REGION,
 	'output=s'	=> \$outputfile,
 	'ignore=s'	=> \$ignorechannels,
-  'include=s' => \$includechannels,
-  'fvicons'	=> \$USEFREEVIEWICONS,
+	'include=s'	=> \$includechannels,
+	'fvicons'	=> \$USEFREEVIEWICONS,
 	'cachefile=s'	=> \$CACHEFILE,
 	'cachetime=i'	=> \$CACHETIME,
 	'duplicates=s'	=> \@dupes,
@@ -96,8 +97,7 @@ if ($FURL_OK)
 	$ua->default_header( 'Accept-Encoding' => 'application/json');
 	$ua->default_header( 'Accept-Charset' => 'utf-8');
 }
-die usage() if ($help);
-die(usage() ) if (!defined($REGION));
+die usage() if ($help || !defined($REGION));
 
 $CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE eq "yourtv.db");
 
@@ -139,6 +139,7 @@ for (1 .. $MAX_THREADS)
 	warn("Started thread $_...\n") if ($DEBUG);
 }
 
+warn("My current directory for cachefiles is: " . getcwd . "\n") if ($VERBOSE);
 if (! -e $FVCACHEFILE)
 {
 	warn("Freeview cache file not present/readable, this run will be slower than normal...\n");
