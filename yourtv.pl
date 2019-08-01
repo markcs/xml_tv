@@ -490,6 +490,7 @@ sub getepg
 							$showdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($thrdret{$airing});
 							1;
 						};
+						use Data::Dumper;print Dumper $showdata;
 						if (defined($showdata))
 						{
 							$GUIDEDATA[$showcount]->{id} = $id;
@@ -526,19 +527,20 @@ sub getepg
 							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
 							my ($episodeYear, $episodeMonth, $episodeDay, $episodeHour, $episodeMinute) = $tmpseries =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/;#S$1E$2$3$4$5/;
 
-							if (defined($showdata->{program}->{programTypeId})) {
-								if ($showdata->{program}->{programTypeId} eq "1") {
+							if (defined($showdata->{programType}->{id})) {
+								my $programtype = $showdata->{programType}->{id};
+								if ($programtype eq "1") {
 									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
 								}
-								elsif ($showdata->{program}->{programTypeId} eq "2") {
+								elsif ($programtype eq "2") {
 									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
 								}
-								elsif ($showdata->{program}->{programTypeId} eq "3") {
+								elsif ($programtype eq "3") {
 									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
 									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
 									$GUIDEDATA[$showcount]->{season} = "1";
 								}
-								elsif ($showdata->{program}->{programTypeId} eq "4") {
+								elsif ($programtype eq "4") {
 									$GUIDEDATA[$showcount]->{premiere} = "1";
 									$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
 									if (defined($showdata->{episodeNumber}))
@@ -557,7 +559,7 @@ sub getepg
 										$GUIDEDATA[$showcount]->{season} = $episodeYear;
 									}
 								}
-								elsif ($showdata->{program}->{programTypeId} eq "5")
+								elsif ($programtype eq "5")
 								{
 									if (defined($showdata->{seriesNumber})) {
 										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
@@ -574,7 +576,7 @@ sub getepg
 										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 									}
 								}
-								elsif ($showdata->{program}->{programTypeId} eq "8")
+								elsif ($programtype eq "8")
 								{
 									if (defined($showdata->{seriesNumber})) {
 										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
@@ -591,7 +593,7 @@ sub getepg
 										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 									}
 								}
-								elsif ($showdata->{program}->{programTypeId} eq "9")
+								elsif ($programtype eq "9")
 								{
 									$GUIDEDATA[$showcount]->{season} = $episodeYear;
 									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
@@ -602,6 +604,11 @@ sub getepg
 								$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
 								$GUIDEDATA[$showcount]->{previouslyshown} = "$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
 							}
+							if (defined($showdata->{program}->{imdbId} ) )
+							{
+								$GUIDEDATA[$showcount]->{imdb} = $showdata->{program}->{imdbId};
+							}
+
 							if ($channelIsDuped)
 							{
 								foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
@@ -665,6 +672,10 @@ sub printepg
 			$episode = 0 if ($episode < 0);
 			$episodeseries = "$series.$episode.";
 			${$XMLRef}->dataElement('episode-num', $episodeseries, 'system' => 'xmltv_ns') ;
+		}
+		if (defined($items->{imdb}))
+		{
+			${$XMLRef}->dataElement('episode-num', "series/".$items->{imdb}, 'system' => 'imdb.com');
 		}
 		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
 		${$XMLRef}->emptyTag('previously-shown', 'start' => $items->{previouslyshown}) if (defined($items->{previouslyshown}));
