@@ -75,6 +75,7 @@ GetOptions
 	'include=s'	=> \$includechannels,
 	'fvicons'	=> \$USEFREEVIEWICONS,
 	'cachefile=s'	=> \$CACHEFILE,
+	'fvcachefile=s'	=> \$FVCACHEFILE,
 	'cachetime=i'	=> \$CACHETIME,
 	'duplicates=s'	=> \@dupes,
 	'help|?'	=> \$help,
