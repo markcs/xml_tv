@@ -470,8 +470,7 @@ sub getepg
 						$GUIDEDATA[$showcount]->{season} = $episodedata->{series_number};
 					}
 				}
-
-				if (!$showdata->{IsRepeat})
+				if ($showdata->{IsRepeat} eq "1")
 				{
 					$GUIDEDATA[$showcount]->{originalairdate} = $showdata->{StartTimeMF};# $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
 					$GUIDEDATA[$showcount]->{originalairdate} =~ s/Z//;
@@ -685,21 +684,23 @@ sub buildregions {
 	}
 }
 
-
-
 sub usage
 {
 	print    "Usage:\n"
-		. "\t$0 --bbcregion=<bbcregion> --itvregion=<itvregion> [--extrachannels=<channel numbers> ] [--output <filename>] [--days=<days to collect>] [--pretty] [--VERBOSE] [--help|?]\n"
+		. "\t$0 [--bbcregion=<bbcregion>] [--itvregion=<itvregion>] [--onlychannels=<channel numbers.] [--extrachannels=<channel numbers> ] [--output <filename>] [--output <filename>] [--days=<days to collect>] [--pretty] [--verify] [--VERBOSE] [--help|?]\n"
 		. "\n\tWhere:\n\n"
-		. "\t--bbcregion=<bbcregion>\t\tThis defines which BBC guide to parse. It is mandatory. Refer below for a list of regions.\n"
-		. "\t--itvregion=<itvregion>\t\tThis defines which ITV guide to parse. It is mandatory. Refer below for a list of regions.\n"
+		. "\t--bbcregion=<bbcregion>\t\t\tThis defines which BBC guide to parse. It is mandatory if <onlychannels> is not defined. Refer below for a list of regions.\n"
+		. "\t--itvregion=<itvregion>\t\t\tThis defines which ITV guide to parse. It is mandatory if <onlychannels> is not defined. Refer below for a list of regions.\n"
+		. "\t--onlychannels=<channel list>\t\tThis defines the channels to collect and will ignore any other defined channel options.\n"
 		. "\t--extrachannels=<channel list>\t\tThis defines the extra channels to collect. Use option '--extrachannels help' for complete list.\n"
-		. "\t--days=<days to collect>\tThis defaults to 7 days and can be no more than 7.\n"
-		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
-		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
-		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
-		. "\t--help\t\t\t\tWill print this usage and exit!\n"
+		. "\t--days=<days to collect>\t\tThis defaults to 7 days and can be no more than 7.\n"
+		. "\t--pretty\t\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
+		. "\t--output <filename>\t\t\tWrite to the location and file specified instead of standard output.\n"
+		. "\t--verbose\t\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
+		. "\t--verify\t\t\t\tPrints the actual LCN numbers and channel names to verify what will be collected.\n"
+		. "\t--help\t\t\t\t\tWill print this usage and exit!\n"
+		. "\n\n\t!!! NOTE: Channel numbers are not the same channel numbers seen on the TV, but a number used by radiotimes.com to identify the channel. Do not get them mixed up!!!!.\n"
+		. "\t!!! NOTE: To see a list of radiotimes channel numbers and names use option --extrachannels help!!!!.\n"
 		. "\n\t  <bbcregion> is one of the following:\n";
 		foreach my $key (keys %{$BBCREGIONS})
 		{
