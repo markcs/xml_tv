@@ -319,12 +319,12 @@ sub getchannels
 				$CHANNELDATA[$channelcount]->{lcn} = $data->[$count]->{Packages}->[$packagecount]->{EpgChannel};
 			}
 		}
-		$CHANNELDATA[$channelcount]->{name} = $data->[$count]->{DisplayName};
-		$CHANNELDATA[$channelcount]->{name} =~ s/&amp;/&/g;
+		$CHANNELDATA[$channelcount]->{name} = sanitizeHTML($data->[$count]->{DisplayName});
+		#$CHANNELDATA[$channelcount]->{name} =~ s/&amp;/&/g;
 
 		#$CHANNELDATA[$channelcount]->{icon} = sanitizeURL($data->[$count]->{Image});
-		$CHANNELDATA[$channelcount]->{icon} = $data->[$count]->{Image};
-		$CHANNELDATA[$channelcount]->{icon} =~ s/&amp;/&/g;
+		$CHANNELDATA[$channelcount]->{icon} = sanitizeHTML($data->[$count]->{Image});
+		#$CHANNELDATA[$channelcount]->{icon} =~ s/&amp;/&/g;
 
 		warn("Got channel $CHANNELDATA[$channelcount]->{id} - $CHANNELDATA[$channelcount]->{name}  ...\n") if ($VERBOSE);
 		if ($VERIFY) {
@@ -443,12 +443,12 @@ sub getepg
 				$GUIDEDATA[$showcount]->{stop} =~ s/[-T:]//g;
 				$GUIDEDATA[$showcount]->{stop} =~ s/\+/ \+/g;
 				$GUIDEDATA[$showcount]->{id} = $id;
-				$GUIDEDATA[$showcount]->{desc} = $showdata->{Description};
-				$GUIDEDATA[$showcount]->{desc} =~ s/&amp;/&/g if (defined($GUIDEDATA[$showcount]->{desc}));
-				$GUIDEDATA[$showcount]->{url} = $showdata->{Image};
-				$GUIDEDATA[$showcount]->{url} =~ s/&amp;/&/g;
-				$GUIDEDATA[$showcount]->{title} = $showdata->{Title};
-				$GUIDEDATA[$showcount]->{title} =~ s/&amp;/&/g;
+				$GUIDEDATA[$showcount]->{desc} = sanitizeHTML($showdata->{Description}) if (defined($GUIDEDATA[$showcount]->{desc}));
+				#$GUIDEDATA[$showcount]->{desc} =~ s/&amp;/&/g if (defined($GUIDEDATA[$showcount]->{desc}));
+				$GUIDEDATA[$showcount]->{url} = sanitizeHTML($showdata->{Image});
+				#$GUIDEDATA[$showcount]->{url} =~ s/&amp;/&/g;
+				$GUIDEDATA[$showcount]->{title} = sanitizeHTML($showdata->{Title});
+				#$GUIDEDATA[$showcount]->{title} =~ s/&amp;/&/g;
 				if (defined($showdata->{EpisodePositionInSeries}))
 				{
 					$GUIDEDATA[$showcount]->{episode} = $showdata->{EpisodePositionInSeries};
@@ -536,6 +536,15 @@ sub printepg
 		}
 		${$XMLRef}->endTag('programme');
 	}
+}
+
+
+sub sanitizeHTML
+{
+	my $t = shift;
+	$t =~ s/&#39;/'/g;
+	$t =~ s/&amp;/&/g;
+	return $t;
 }
 
 sub sanitizeText
