@@ -18,7 +18,6 @@ if (!$FURL_OK)
 	warn("Furl not found, falling back to LWP for fetching URLs (this will be slow)...\n");
 	use LWP::UserAgent;
 }
-
 use JSON;
 use DateTime;
 use Getopt::Long;
@@ -77,8 +76,9 @@ if ($FURL_OK)
 	warn("Using Furl for fetching http:// and https:// requests.\n") if ($VERBOSE);
 	$ua = Furl->new(
 				agent => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0',
-				timeout => 30,
+				timeout => 45,
 #				headers => [ 'Accept-Encoding' => 'application/json' ],
+				headers => ['Connection'	=> 'keep-alive'],
 				ssl_opts => {SSL_verify_mode => 0}
 			);
 } else {
@@ -172,8 +172,6 @@ move($TMPCACHEFILE, $CACHEFILE);
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
 $XML->xmlDecl("ISO-8859-1");
 $XML->doctype("tv", undef, "xmltv.dtd");
-#$XML->startTag(‘tv’, ‘source-info-name’ => “https://github.com/markcs/xml_tv”, ‘generator-info-url’ => “http://www.xmltv.org/”);
-#$XML->startTag('tv', 'generator-info-url' => "http://www.xmltv.org/");
 $XML->startTag('tv', 'source-info-name' => "https://github.com/markcs/xml_tv", 'generator-info-url' => "http://www.xmltv.org/");
 
 printchannels(\$XML);
@@ -328,8 +326,10 @@ sub getchannels
 
 		warn("Got channel $CHANNELDATA[$channelcount]->{id} - $CHANNELDATA[$channelcount]->{name}  ...\n") if ($VERBOSE);
 		if ($VERIFY) {
-			$CHANNELDATA[$channelcount]->{id} =~ s/[^0-9]//g;
-			print "$CHANNELDATA[$channelcount]->{id}\t\t$CHANNELDATA[$channelcount]->{name}\n";
+
+			$CHANNELDATA[$channelcount]->{id} =~ s/^([0-9]+)\.([0-9]+).*/$1/;
+			my $radiotimesid = $2;
+			print "$CHANNELDATA[$channelcount]->{id}\t\t$CHANNELDATA[$channelcount]->{name} ($radiotimesid)\n";
 		}
 		$channelcount++
 
@@ -352,13 +352,13 @@ sub getepg
 		my $startdate = $dt->dmy;
 		my $res;
 		my $try = 0;
-		while ($try < 3)
+		while ($try < 5)
 		{
 			my $url = "https://immediate-prod.apigee.net/broadcast/v1/schedule?startdate=".$startdate."%2012:00:00&hours=24&totalwidthunits=898&channels=".$CHANNELLIST;
 			warn("\n\nGetting all program data for channels for $startdate ($url)...\n") if ($VERBOSE);
 			$res = $ua->get($url);
 			last if ($res->is_success());
-			warn ("Timeout in receiving data on try $try. Sleeping for 5 seconds .... \n") if ($VERBOSE);
+			warn ("Timeout in receiving data on try $try (Code ".$res->code."). Sleeping for 5 seconds .... \n") if ($VERBOSE);
 			sleep 5;
 			$try++;
 		}
@@ -458,7 +458,7 @@ sub getepg
 					#my $episodedata;
 
 					my $episodedata = $thrdret{$episodeid};
-					if (($episodedata ne "FAILED") || ($episodedata ne "ERROR"))
+					if (($episodedata ne "FAILED") and ($episodedata ne "ERROR"))
 					{
 						eval
 						{
@@ -482,7 +482,7 @@ sub getepg
 			}
 		}
 	}
-	warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
+	warn("\nProcessed a total of $showcount shows ...\n") if ($VERBOSE);
 }
 
 
@@ -733,15 +733,18 @@ sub extrachannelsusage
 		. "\n!!!!!!!!! NOTE: The number IS NOT A CHANNEL NUMBER. It is an identifier used by RadioTimes and does not correspond to the channel numbers seen on the TV !!!!!!!!!!\n";
 
 	print "\n\n\t\t\tNumber to use\t\tChannel Name\n";
+	my $allchannels = "";
 	foreach my $key (@{$OTHERCHANNELS})
 	{
 		print "\t\t\t$key->{number}\t\t\t$key->{name}\n";
+		$allchannels = $key->{number}.",".$allchannels;
 	}
 	print "\n=====================================\nMAIN Channels\n";
 
 	foreach my $key (@$MAINCHANNELS)
 	{
 		print "\t\t\t$key->{number}\t\t\t$key->{name}\n";
+		$allchannels = $key->{number}.",".$allchannels;
 	}
 
 	print "\n=====================================\nITV Channels\n";
@@ -750,6 +753,7 @@ sub extrachannelsusage
 		foreach my $regionkey (@{$ITVREGIONS->{$key}})
 			{
 				print "\t\t\t$regionkey->{number}\t\t\t $key - $regionkey->{name}\n";
+				$allchannels = $regionkey->{number}.",".$allchannels;
 			}
 
 	}
@@ -760,8 +764,10 @@ sub extrachannelsusage
 		foreach my $regionkey (@{$BBCREGIONS->{$key}})
 			{
 				print "\t\t\t$regionkey->{number}\t\t\t $key - $regionkey->{name}\n";
+				$allchannels = $regionkey->{number}.",".$allchannels;
 			}
 
 	}
+	print "$allchannels\n";
 	die;
 }
