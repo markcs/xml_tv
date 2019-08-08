@@ -9,7 +9,7 @@ if ($threading_ok)
         use threads::shared;
 }
 
-my $MAX_THREADS = 7;
+my $MAX_THREADS = 4;
 
 use IO::Socket::SSL;
 my $FURL_OK = eval 'use Furl; 1';
@@ -54,7 +54,7 @@ my $ITVREGIONS;
 my $MAINCHANNELS;
 my $OTHERCHANNELS;
 
-my ($PLEX, $VERBOSE, $pretty, $NUMDAYS, $extrachannels, $BBCREGION, $ITVREGION, $DEBUG, $outputfile, $VERIFY, $help) = (1, 0, 0, 1, "", undef, undef, undef, undef, undef, undef);
+my ($PLEX, $VERBOSE, $pretty, $NUMDAYS, $extrachannels, $BBCREGION, $ITVREGION, $DEBUG, $outputfile, $VERIFY, $help) = (0, 0, 0, 1, "", undef, undef, undef, undef, undef, undef);
 GetOptions
 (
 	'verbose'	=> \$VERBOSE,
@@ -343,7 +343,7 @@ sub getepg
 	my $channelcount = 0;
 	my $showcount = 0;
 	my $nl = 0;
-	for(my $day = 0; $day < $NUMDAYS; $day++)
+	for(my $day = -1; $day < $NUMDAYS; $day++)
 	{
 		my $seconds = $day*86400;
 		my $dt = DateTime->now;
@@ -386,10 +386,10 @@ sub getepg
 			for (my $listings = 0; $listings < @$shows; $listings++)
 			{
 				my $showdata = $tmpchanneldata->[$channelcount]->{TvListings}->[$listings];
-
-				if (defined($showdata->{EpisodePositionInSeries}))
+				if ((defined($showdata->{Specialisation}) and ($showdata->{Specialisation}) =~ /tv/i))
 				{
-					my $episodeid = $showdata->{EpisodeId};
+						my $episodeid = $showdata->{EpisodeId};
+
 						if (!exists $dbm_hash{$episodeid} || $dbm_hash{$episodeid} eq "$episodeid|undef")
 						{
 							warn("No cache data for $episodeid, requesting...\n") if ($DEBUG);
@@ -398,9 +398,9 @@ sub getepg
 						}
 						else
 						{
-								warn("Using cache for $episodeid.\n") if ($DEBUG);
-								#$episodedata = $dbm_hash{$episodeid};
-								$thrdret{$episodeid} = $dbm_hash{$episodeid};
+							warn("Using cache for $episodeid.\n") if ($DEBUG);
+							#$episodedata = $dbm_hash{$episodeid};
+							$thrdret{$episodeid} = $dbm_hash{$episodeid};
 
 						}
 				}
@@ -416,7 +416,20 @@ sub getepg
 					my ($episodeid, $result) = split(/\|/, $OUTQ->dequeue(), 2);
 					warn("$episodeid = $result\n") if ($DEBUG);
 					$thrdret{$episodeid} = $result;
-					$dbm_hash{$episodeid} = $thrdret{$episodeid};
+					if ($thrdret{$episodeid} eq "FAILED")
+					{
+						warn("Unable to connect ... skipping\n");
+						next;
+					} elsif ($thrdret{$episodeid} eq "ERROR") {
+						warn ("FATAL: Unable to connect ... (error code >= 500 have you need banned?)\n");
+						next;
+					} elsif ($thrdret{$episodeid} eq "UNKNOWN") {
+						die("FATAL: Unable to connect ... (Unknown Error!)\n");
+					}
+					else {
+
+						$dbm_hash{$episodeid} = $thrdret{$episodeid};
+					}
 				}
 				if ($VERBOSE && $enqueued)
 				{
@@ -449,14 +462,22 @@ sub getepg
 				#$GUIDEDATA[$showcount]->{url} =~ s/&amp;/&/g;
 				$GUIDEDATA[$showcount]->{title} = sanitizeHTML($showdata->{Title});
 				#$GUIDEDATA[$showcount]->{title} =~ s/&amp;/&/g;
-				if (defined($showdata->{EpisodePositionInSeries}))
+				#if (defined($showdata->{EpisodePositionInSeries}))
+
+				if ((defined($showdata->{Specialisation})) and ($showdata->{Specialisation} =~ /tv/i))
 				{
-					$GUIDEDATA[$showcount]->{episode} = $showdata->{EpisodePositionInSeries};
-					$GUIDEDATA[$showcount]->{episode} =~ s/(.*)\/.*/$1/;
+					#TEMP INCASE WE FAILED TO COLLECT DATA BELOW
+					if (defined($showdata->{EpisodePositionInSeries}))
+					{
+						$GUIDEDATA[$showcount]->{episode} = $showdata->{EpisodePositionInSeries};
+						$GUIDEDATA[$showcount]->{episode} =~ s/(.*)\/.*/$1/;
+					}
+					else {
+						$GUIDEDATA[$showcount]->{episode} = 1;
+					}
+					$GUIDEDATA[$showcount]->{season} = "2019";
 					#getseries($ua,$showdata->{EpisodePositionInSeries});
 					my $episodeid = $showdata->{EpisodeId};
-					#my $episodedata;
-
 					my $episodedata = $thrdret{$episodeid};
 					if (($episodedata ne "FAILED") and ($episodedata ne "ERROR"))
 					{
