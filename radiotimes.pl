@@ -54,7 +54,7 @@ my $ITVREGIONS;
 my $MAINCHANNELS;
 my $OTHERCHANNELS;
 
-my ($PLEX, $VERBOSE, $pretty, $NUMDAYS, $extrachannels, $BBCREGION, $ITVREGION, $DEBUG, $outputfile, $VERIFY, $help) = (0, 0, 0, 1, "", undef, undef, undef, undef, undef, undef);
+my ($PLEX, $VERBOSE, $pretty, $NUMDAYS, $extrachannels, $BBCREGION, $ITVREGION, $DEBUG, $outputfile, $VERIFY, $help) = (1, 0, 0, 1, "", undef, undef, undef, undef, undef, undef);
 GetOptions
 (
 	'verbose'	=> \$VERBOSE,
@@ -65,29 +65,30 @@ GetOptions
 	'output=s'	=> \$outputfile,
 	'extrachannels=s'	=> \$extrachannels,
 	'onlychannels=s'	=> \$CHANNELLIST,
+	'cachefile=s'		=> \$CACHEFILE,
 	'plex=i'		=> \$PLEX,
 	'debug'		=> \$DEBUG,
 	'verify'	=> \$VERIFY,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
 
-if ($FURL_OK)
-{
-	warn("Using Furl for fetching http:// and https:// requests.\n") if ($VERBOSE);
-	$ua = Furl->new(
-				agent => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0',
-				timeout => 45,
-#				headers => [ 'Accept-Encoding' => 'application/json' ],
-				headers => ['Connection'	=> 'keep-alive'],
-				ssl_opts => {SSL_verify_mode => 0}
-			);
-} else {
+#if (!$FURL_OK)
+#{
+#	warn("Using Furl for fetching http:// and https:// requests.\n") if ($VERBOSE);
+#	$ua = Furl->new(
+#				agent => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0',
+#				timeout => 45,
+##				headers => [ 'Accept-Encoding' => 'application/json' ],
+#				headers => ['Connection'	=> 'keep-alive'],
+#				ssl_opts => {SSL_verify_mode => 0}
+#			);
+#} else {
 	warn("Using LWP::UserAgent for fetching http:// and https:// requests.\n") if ($VERBOSE);
 	$ua = LWP::UserAgent->new;
 	$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
 	#$ua->default_header( 'Accept-Encoding' => 'application/json');
 	#$ua->default_header( 'Accept-Charset' => 'utf-8');
-}
+#}
 buildregions($ua);
 
 extrachannelsusage() if ($extrachannels =~ /help/i);
