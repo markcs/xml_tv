@@ -278,7 +278,8 @@ warn("Starting to build the XML...\n") if ($VERBOSE);
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
 $XML->xmlDecl("ISO-8859-1");
 $XML->doctype("tv", undef, "xmltv.dtd");
-$XML->startTag('tv', 'generator-info-url' => "http://www.xmltv.org/");
+#$XML->startTag('tv', 'generator-info-url' => "http://www.xmltv.org/");
+$XML->startTag('tv', 'source-info-name' => "http://xmltv.net", 'generator-info-url' => "http://www.xmltv.org/");
 
 warn("Building the channel list...\n") if ($VERBOSE);
 printchannels(\$XML);
