@@ -22,6 +22,7 @@ if (!$FURL_OK)
 }
 
 use JSON;
+use XML::Simple;
 use DateTime;
 use Getopt::Long;
 use XML::Writer;
@@ -74,10 +75,61 @@ GetOptions
 	'include=s'	=> \$includechannels,
 	'fvicons'	=> \$USEFREEVIEWICONS,
 	'cachefile=s'	=> \$CACHEFILE,
+	'fvcachefile=s'	=> \$FVCACHEFILE,
 	'cachetime=i'	=> \$CACHETIME,
 	'duplicates=s'	=> \@dupes,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
+
+my %ABCRADIO;
+$ABCRADIO{"200"}{name}  = "Double J";
+$ABCRADIO{"200"}{iconurl}       = "https://www.abc.net.au/cm/lb/8811932/thumbnail/station-logo-thumbnail.jpg";
+$ABCRADIO{"200"}{servicename}   = "doublej";
+$ABCRADIO{"201"}{name}  = "ABC Jazz";
+$ABCRADIO{"201"}{iconurl}       = "https://www.abc.net.au/cm/lb/8785730/thumbnail/station-logo-thumbnail.png";
+$ABCRADIO{"201"}{servicename}   = "jazz";
+my %SBSRADIO;
+$SBSRADIO{"36"}{name}   = "SBS Arabic24";
+$SBSRADIO{"36"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
+$SBSRADIO{"36"}{servicename}    = "poparaby";
+$SBSRADIO{"37"}{name}   = "SBS Radio 1";
+$SBSRADIO{"37"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs1_300_colour.png";
+$SBSRADIO{"37"}{servicename}    = "sbs1";
+$SBSRADIO{"38"}{name}   = "SBS Radio 2";
+$SBSRADIO{"38"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs2_300_colour.png";
+$SBSRADIO{"38"}{servicename}    = "sbs2";
+$SBSRADIO{"39"}{name}   = "SBS Chill";
+$SBSRADIO{"39"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_chill_300_colour.png";
+$SBSRADIO{"39"}{servicename}    = "chill";
+
+$SBSRADIO{"301"}{name}  = "SBS Radio 1";
+$SBSRADIO{"301"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs1_300_colour.png";
+$SBSRADIO{"301"}{servicename}   = "sbs1";
+
+$SBSRADIO{"302"}{name}  = "SBS Radio 2";
+$SBSRADIO{"302"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs2_300_colour.png";
+$SBSRADIO{"302"}{servicename}   = "sbs2";
+
+$SBSRADIO{"303"}{name}  = "SBS Radio 3";
+$SBSRADIO{"303"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs3_300_colour.png";
+$SBSRADIO{"303"}{servicename}   = "sbs3";
+
+$SBSRADIO{"304"}{name}  = "SBS Arabic24";
+$SBSRADIO{"304"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
+$SBSRADIO{"304"}{servicename}   = "poparaby";
+
+$SBSRADIO{"305"}{name}  = "SBS PopDesi";
+$SBSRADIO{"305"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popdesi_300_colour.png";
+$SBSRADIO{"305"}{servicename}   = "popdesi";
+
+$SBSRADIO{"306"}{name}  = "SBS Chill";
+$SBSRADIO{"306"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_chill_300_colour.png";
+$SBSRADIO{"306"}{servicename}   = "chill";
+
+$SBSRADIO{"307"}{name}  = "SBS PopAsia";
+$SBSRADIO{"307"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popasia_300_colour.png";
+$SBSRADIO{"307"}{servicename}   = "popasia";
+
 
 get_duplicate_channels(@dupes) if (@dupes and scalar @dupes);
 
@@ -195,8 +247,13 @@ undef $dbrw;
 
 warn("Getting Channel list...\n") if ($VERBOSE);
 getchannels($ua);
+push(@CHANNELDATA,SBSgetchannels());
+push(@CHANNELDATA,ABCgetchannels());
+
 warn("Getting EPG data...\n") if ($VERBOSE);
 getepg($ua);
+push(@GUIDEDATA,SBSgetepg($ua));
+push(@GUIDEDATA,ABCgetepg($ua));
 
 warn("Closing Queues...\n") if ($VERBOSE);
 # this will close the queues
@@ -221,7 +278,8 @@ warn("Starting to build the XML...\n") if ($VERBOSE);
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
 $XML->xmlDecl("ISO-8859-1");
 $XML->doctype("tv", undef, "xmltv.dtd");
-$XML->startTag('tv', 'generator-info-url' => "http://www.xmltv.org/");
+#$XML->startTag('tv', 'generator-info-url' => "http://www.xmltv.org/");
+$XML->startTag('tv', 'source-info-name' => "http://xmltv.net", 'generator-info-url' => "http://www.xmltv.org/");
 
 warn("Building the channel list...\n") if ($VERBOSE);
 printchannels(\$XML);
@@ -491,7 +549,6 @@ sub getepg
 							$showdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($thrdret{$airing});
 							1;
 						};
-						use Data::Dumper;print Dumper $showdata;
 						if (defined($showdata))
 						{
 							$GUIDEDATA[$showcount]->{id} = $id;
@@ -993,3 +1050,151 @@ sub usage
 		. join("\n\t\t", (map { "$_->{id}\t=\t$_->{name}" } @REGIONS) )
 		. "\n\n";
 }
+
+
+
+################# RADIO
+
+sub ABCgetchannels
+{
+        my $count = 0;
+        my @tmpdata;
+        foreach my $key (keys %ABCRADIO)
+        {
+                $tmpdata[$count]->{name} = $ABCRADIO{$key}{name};
+                $tmpdata[$count]->{id} = $key.".yourtv.com.au";
+                $tmpdata[$count]->{lcn} = $key;
+                $tmpdata[$count]->{icon} = $ABCRADIO{$key}{iconurl};
+                $count++;
+        }
+        return @tmpdata;
+}
+
+sub ABCgetepg
+{
+        my $ua = shift;
+        my $showcount = 0;
+        my @tmpguidedata;
+        foreach my $key (keys %ABCRADIO)
+        {
+                my $id = $key;
+                warn("Getting epg for $ABCRADIO{$key}{name} ...\n") if ($VERBOSE);
+                my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time);
+                my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
+                my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
+                my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
+
+                my $url = URI->new( 'https://program.abcradio.net.au/api/v1/programitems/search.json' );
+                $url->query_form(service => $ABCRADIO{$key}{servicename}, limit => '100', order => 'asc', order_by => 'ppe_date', from => $startdate, to => $enddate);
+                my $res = $ua->get($url);
+                warn("Getting channel program listing for $key ( $url )...\n") if ($VERBOSE);
+                die("Unable to connect to ABC. [" . $res->status_line . "]\n") if (!$res->is_success);
+                my $tmpdata;
+                eval {
+                         $tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
+                        1;
+                };
+                $tmpdata = $tmpdata->{items};
+                if (defined($tmpdata))
+                {
+                        for (my $count = 0; $count < @$tmpdata; $count++)
+                        {
+                                $tmpguidedata[$showcount]->{id} = $key.".yourtv.com.au";
+                                $tmpguidedata[$showcount]->{start} = $tmpdata->[$count]->{live}[0]->{start};
+                                $tmpguidedata[$showcount]->{start} = toLocalTimeString($tmpdata->[$count]->{live}[0]->{start},'UTC');
+                                my $duration = $tmpdata->[$count]->{live}[0]->{duration_seconds}/60;
+                                $tmpguidedata[$showcount]->{stop} = addTime($duration,$tmpguidedata[$showcount]->{start});
+                                $tmpguidedata[$showcount]->{start} =~ s/[-T:]//g;
+                                $tmpguidedata[$showcount]->{start} =~ s/\+/ \+/g;
+                                $tmpguidedata[$showcount]->{stop} =~ s/[-T:]//g;
+                                $tmpguidedata[$showcount]->{stop} =~ s/\+/ \+/g;
+
+                                $tmpguidedata[$showcount]->{channel} = $ABCRADIO{$key}{name};
+                                $tmpguidedata[$showcount]->{title} = $tmpdata->[$count]->{title};
+                                my $catcount = 0;
+                                push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
+                                foreach my $tmpcat (@{$tmpdata->[$count]->{categories}})
+                                {
+                                        push(@{$tmpguidedata[$showcount]->{category}}, $tmpcat->{label});
+                                                $catcount++;
+                                }
+                                $tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{short_sypnosis};
+                                $showcount++;
+
+                        }
+                }
+
+        }
+        warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
+        return @tmpguidedata;
+}
+
+sub SBSgetchannels
+{
+        my @tmpdata;
+        my $count = 0;
+        foreach my $key (keys %SBSRADIO)
+        {
+                $tmpdata[$count]->{name} = $SBSRADIO{$key}{name};
+                $tmpdata[$count]->{id} = $key.".yourtv.com.au";
+                $tmpdata[$count]->{lcn} = $key;
+                $tmpdata[$count]->{icon} = $SBSRADIO{$key}{iconurl};
+                $count++;
+        }
+        return @tmpdata;
+}
+
+sub SBSgetepg
+{
+        my $ua = shift;
+        my $showcount = 0;
+        my @tmpguidedata;
+        foreach my $key (keys %SBSRADIO)
+        {
+                my $id = $key;
+                warn("Getting epg for $SBSRADIO{$key}{name} ...\n") if ($VERBOSE);
+                my $now = time;;
+                my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time);
+                my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
+                my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
+                my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
+
+                my $url = "http://two.aim-data.com/services/schedule/sbs/".$SBSRADIO{$key}{servicename}."?days=".$NUMDAYS;
+                my $res = $ua->get($url);
+                warn("Getting channel program listing for $key ( $url )...\n") if ($VERBOSE);
+                die("Unable to connect to ABC. [" . $res->status_line . "]\n") if (!$res->is_success);
+                my $data = $res->content;
+                my $tmpdata;
+                eval {
+                        $tmpdata = XMLin($data);
+                        1;
+                };
+                $tmpdata = $tmpdata->{entry};
+                if (defined($tmpdata))
+                {
+                        my $count = 0;
+                        foreach my $key (keys %$tmpdata)
+                        {
+                                $tmpguidedata[$showcount]->{id} = $id.".yourtv.com.au";
+                                $tmpguidedata[$showcount]->{start} = $tmpdata->{$key}->{start};
+                                $tmpguidedata[$showcount]->{start} =~ s/[-T:\s]//g;
+                                $tmpguidedata[$showcount]->{start} =~ s/(\+)/00 +/;
+                                $tmpguidedata[$showcount]->{stop} = $tmpdata->{$key}->{end};
+                                $tmpguidedata[$showcount]->{stop} =~ s/[-T:\s]//g;
+                                $tmpguidedata[$showcount]->{stop} =~ s/(\+)/00 +/;
+                                $tmpguidedata[$showcount]->{channel} = $SBSRADIO{$key}{name};
+                                $tmpguidedata[$showcount]->{title} = $tmpdata->{$key}->{title};
+                                my $catcount = 0;
+                                push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
+                                my $desc = $tmpdata->{$key}->{description};
+                                $tmpguidedata[$showcount]->{desc} = $tmpdata->{$key}->{description} if (!(ref $desc eq ref {}));
+                                $showcount++;
+
+                        }
+                }
+
+        }
+        warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
+        return @tmpguidedata;
+}
+
