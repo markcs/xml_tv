@@ -1051,8 +1051,6 @@ sub usage
 		. "\n\n";
 }
 
-
-
 ################# RADIO
 
 sub ABCgetchannels
@@ -1079,11 +1077,10 @@ sub ABCgetepg
         {
                 my $id = $key;
                 warn("Getting epg for $ABCRADIO{$key}{name} ...\n") if ($VERBOSE);
-                my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time);
+                my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time-86400);
                 my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
                 my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
                 my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
-
                 my $url = URI->new( 'https://program.abcradio.net.au/api/v1/programitems/search.json' );
                 $url->query_form(service => $ABCRADIO{$key}{servicename}, limit => '100', order => 'asc', order_by => 'ppe_date', from => $startdate, to => $enddate);
                 my $res = $ua->get($url);
@@ -1115,11 +1112,18 @@ sub ABCgetepg
                                 push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
                                 foreach my $tmpcat (@{$tmpdata->[$count]->{categories}})
                                 {
-                                        push(@{$tmpguidedata[$showcount]->{category}}, $tmpcat->{label});
-                                                $catcount++;
-                                }
-                                $tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{short_sypnosis};
-                                $showcount++;
+									push(@{$tmpguidedata[$showcount]->{category}}, $tmpcat->{label});
+									$catcount++;
+								}
+								if (defined($tmpdata->[$count]->{short_synopsis}))
+								{
+									$tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{short_synopsis};
+								}
+								elsif (defined($tmpdata->[$count]->{mini_synopsis}))
+								{
+									$tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{mini_synopsis};
+								}
+								$showcount++;
 
                         }
                 }
