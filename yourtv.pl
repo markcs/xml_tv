@@ -62,7 +62,7 @@ my (%dbm_hash, %thrdret);
 my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
-my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $REGION, $outputfile, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef);
+my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $REGION, $outputfile, $message, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef ,undef);
 GetOptions
 (
 	'debug'		=> \$DEBUG,
@@ -78,6 +78,7 @@ GetOptions
 	'fvcachefile=s'	=> \$FVCACHEFILE,
 	'cachetime=i'	=> \$CACHETIME,
 	'duplicates=s'	=> \@dupes,
+	'message=s'	=> \$message,
 	'help|?'	=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
 
@@ -275,11 +276,18 @@ move($TMPCACHEFILE, $CACHEFILE);
 move($FVTMPCACHEFILE, $FVCACHEFILE);
 
 warn("Starting to build the XML...\n") if ($VERBOSE);
+if (defined($message))
+{
+	$message = "http://xmltv.net - ".$message;
+}
+else {
+	$message = "http://xmltv.net";
+}
+
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
 $XML->xmlDecl("ISO-8859-1");
 $XML->doctype("tv", undef, "xmltv.dtd");
-#$XML->startTag('tv', 'generator-info-url' => "http://www.xmltv.org/");
-$XML->startTag('tv', 'source-info-name' => "http://xmltv.net", 'generator-info-url' => "http://www.xmltv.org/");
+$XML->startTag('tv', 'source-info-name' => $message, 'generator-info-url' => "http://www.xmltv.org/");
 
 warn("Building the channel list...\n") if ($VERBOSE);
 printchannels(\$XML);
@@ -373,9 +381,7 @@ sub getchannels
 	my $url = "https://www.yourtv.com.au/api/regions/" . $REGION . "/channels";
 	my $res = $ua->get($url);
 	my $tmpchanneldata;
-
 	die("Unable to connect to FreeView.\n") if (!$res->is_success);
-
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 	my $dupe_count = 0;
 
@@ -421,7 +427,6 @@ sub getepg
 	my $showcount = 0;
 	my $dupe_scount = 0;
 	my $url;
-
 	warn(" \n") if ($VERBOSE);
 	my $nl = 0;
 	for(my $day = 0; $day < $NUMDAYS; $day++)
@@ -1084,8 +1089,11 @@ sub ABCgetepg
                 my $url = URI->new( 'https://program.abcradio.net.au/api/v1/programitems/search.json' );
                 $url->query_form(service => $ABCRADIO{$key}{servicename}, limit => '100', order => 'asc', order_by => 'ppe_date', from => $startdate, to => $enddate);
                 my $res = $ua->get($url);
-                warn("Getting channel program listing for $key ( $url )...\n") if ($VERBOSE);
-                die("Unable to connect to ABC. [" . $res->status_line . "]\n") if (!$res->is_success);
+                if (!$res->is_success)
+				{
+					warn("Unable to connect to ABC radio schedule: URL: $url. [" . $res->status_line . "]\n");
+					next;
+				}
                 my $tmpdata;
                 eval {
                          $tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
@@ -1165,8 +1173,11 @@ sub SBSgetepg
 
                 my $url = "http://two.aim-data.com/services/schedule/sbs/".$SBSRADIO{$key}{servicename}."?days=".$NUMDAYS;
                 my $res = $ua->get($url);
-                warn("Getting channel program listing for $key ( $url )...\n") if ($VERBOSE);
-                die("Unable to connect to ABC. [" . $res->status_line . "]\n") if (!$res->is_success);
+                if (!$res->is_success)
+				{
+					warn("Unable to connect to SBS radio schedule: URL: $url.. [" . $res->status_line . "]\n");
+					next;
+				}
                 my $data = $res->content;
                 my $tmpdata;
                 eval {
