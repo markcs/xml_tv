@@ -27,6 +27,7 @@ use DateTime;
 use Getopt::Long;
 use XML::Writer;
 use URI;
+use URI::Escape;
 use Thread::Queue;
 use Fcntl qw(:DEFAULT :flock);
 use File::Copy;
@@ -396,6 +397,8 @@ sub getchannels
 		$CHANNELDATA[$count]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
 		$CHANNELDATA[$count]->{lcn} = $tmpchanneldata->[$count]->{number};
 		$CHANNELDATA[$count]->{icon} = $tmpchanneldata->[$count]->{logo}->{url};
+		$CHANNELDATA[$count]->{icon} =~ s/.*(https.*?amazon.*)/$1/;
+		$CHANNELDATA[$count]->{icon} = uri_unescape($CHANNELDATA[$count]->{icon});
 		$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
 		#FIX SBS ICONS
 		if (($USEFREEVIEWICONS) && (!defined($CHANNELDATA[$count]->{icon})) && ($CHANNELDATA[$count]->{name} =~ /SBS/))
