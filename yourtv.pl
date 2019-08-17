@@ -381,6 +381,7 @@ sub getchannels
 	warn("Getting channel list from YourTV ...\n") if ($VERBOSE);
 	my $url = "https://www.yourtv.com.au/api/regions/" . $REGION . "/channels";
 	my $res = $ua->get($url);
+	warn("Getting channel list from YourTV ... ( $url )\n") if ($VERBOSE);
 	my $tmpchanneldata;
 	die("Unable to connect to FreeView.\n") if (!$res->is_success);
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
@@ -396,9 +397,14 @@ sub getchannels
 		$CHANNELDATA[$count]->{name} = $tmpchanneldata->[$count]->{description};
 		$CHANNELDATA[$count]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
 		$CHANNELDATA[$count]->{lcn} = $tmpchanneldata->[$count]->{number};
-		$CHANNELDATA[$count]->{icon} = $tmpchanneldata->[$count]->{logo}->{url};
-		$CHANNELDATA[$count]->{icon} =~ s/.*(https.*?amazon.*)/$1/;
-		$CHANNELDATA[$count]->{icon} = uri_unescape($CHANNELDATA[$count]->{icon});
+		if (defined($tmpchanneldata->[$count]->{logo}->{url}))
+		{
+			$CHANNELDATA[$count]->{icon} = $tmpchanneldata->[$count]->{logo}->{url};
+			$CHANNELDATA[$count]->{icon} =~ s/.*(https.*?amazon.*)/$1/;
+			$CHANNELDATA[$count]->{icon} = uri_unescape($CHANNELDATA[$count]->{icon});
+		}
+
+		print "$CHANNELDATA[$count]->{icon}\n";
 		$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
 		#FIX SBS ICONS
 		if (($USEFREEVIEWICONS) && (!defined($CHANNELDATA[$count]->{icon})) && ($CHANNELDATA[$count]->{name} =~ /SBS/))
