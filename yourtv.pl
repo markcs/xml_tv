@@ -403,8 +403,6 @@ sub getchannels
 			$CHANNELDATA[$count]->{icon} =~ s/.*(https.*?amazon.*)/$1/;
 			$CHANNELDATA[$count]->{icon} = uri_unescape($CHANNELDATA[$count]->{icon});
 		}
-
-		print "$CHANNELDATA[$count]->{icon}\n";
 		$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
 		#FIX SBS ICONS
 		if (($USEFREEVIEWICONS) && (!defined($CHANNELDATA[$count]->{icon})) && ($CHANNELDATA[$count]->{name} =~ /SBS/))
