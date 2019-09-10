@@ -256,7 +256,6 @@ flock DBMRW, LOCK_EX;							# Lock it exclusively
 undef $dbrw;
 
 warn("Getting Channel list...\n") if ($VERBOSE);
-
 push(@CHANNELDATA,getchannels($ua, $REGION));
 push(@CHANNELDATA,SBSgetchannels());
 push(@CHANNELDATA,ABCgetchannels());
@@ -461,6 +460,7 @@ sub getepg
 	#my $ua = shift;
 	my ($ua, $region, @extrachannels) = @_;
 	my $showcount = 0;
+	my $dupe_scount = 0;
 	my $url;
 	my @guidedata;
 	my $region_timezone;
@@ -735,6 +735,24 @@ sub getepg
 									$DUPEGUIDEDATA[$DUPES_COUNT]->{channel} = $did;
 									warn("Duplicated guide data for show entry $showcount -> $DUPES_COUNT ($guidedata[$showcount] -> $DUPEGUIDEDATA[$DUPES_COUNT]) ...\n") if ($DEBUG);
 									++$DUPES_COUNT;
+								}
+							}
+							if (defined($showdata->{program}->{imdbId} ) )
+							{
+								$GUIDEDATA[$showcount]->{imdb} = $showdata->{program}->{imdbId};
+							}
+
+							if ($channelIsDuped)
+							{
+								foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
+								{
+									next if ($DUPLICATE_CHANNELS{$dchan} ne $channelIsDuped);
+									my $did = $dchan . ".yourtv.com.au";
+									$DUPEGUIDEDATA[$dupe_scount] = clone($GUIDEDATA[$showcount]);
+									$DUPEGUIDEDATA[$dupe_scount]->{id} = $did;
+									$DUPEGUIDEDATA[$dupe_scount]->{channel} = $did;
+									warn("Duplicated guide data for show entry $showcount -> $dupe_scount ($GUIDEDATA[$showcount] -> $DUPEGUIDEDATA[$dupe_scount]) ...\n") if ($DEBUG);
+									++$dupe_scount;
 								}
 							}
 							$showcount++;
@@ -1347,3 +1365,4 @@ sub abcrn
   pop @tmpguidedata;
   return ($channel,@tmpguidedata);
 }
+
