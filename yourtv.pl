@@ -1,5 +1,4 @@
 #!/usr/bin/perl
-
 use strict;
 use warnings;
 
@@ -33,7 +32,7 @@ use Fcntl qw(:DEFAULT :flock);
 use File::Copy;
 use Clone qw( clone );
 use Cwd qw( getcwd );
-
+use HTML::TableExtract;
 use DB_File;
 
 my %map = (
@@ -50,20 +49,19 @@ my @DUPEGUIDEDATA;
 my $FVICONS;
 my $DVBTRIPLET;
 my @GUIDEDATA;
-my $REGION_TIMEZONE;
-my $REGION_NAME;
 my $FVCACHEFILE = "fv.db";
 my $FVTMPCACHEFILE = ".$$.freeview-tmp-cache.db";
 my $CACHEFILE = "yourtv.db";
 my $CACHETIME = 86400; # 1 day - don't change this unless you know what you are doing.
 my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
 my $ua;
+my $DUPES_COUNT = 0;
 
 my (%dbm_hash, %thrdret);
 my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
-my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $REGION, $outputfile, $message, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef ,undef);
+my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $REGION, $outputfile, $message, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef ,undef, undef);
 GetOptions
 (
 	'debug'		=> \$DEBUG,
@@ -78,6 +76,7 @@ GetOptions
 	'cachefile=s'	=> \$CACHEFILE,
 	'fvcachefile=s'	=> \$FVCACHEFILE,
 	'cachetime=i'	=> \$CACHETIME,
+	'extrachannels=s'	=> \$extrachannels,
 	'duplicates=s'	=> \@dupes,
 	'message=s'	=> \$message,
 	'help|?'	=> \$help,
@@ -90,6 +89,16 @@ $ABCRADIO{"200"}{servicename}   = "doublej";
 $ABCRADIO{"201"}{name}  = "ABC Jazz";
 $ABCRADIO{"201"}{iconurl}       = "https://www.abc.net.au/cm/lb/8785730/thumbnail/station-logo-thumbnail.png";
 $ABCRADIO{"201"}{servicename}   = "jazz";
+$ABCRADIO{"28"}{name}  			= "Triple J";
+$ABCRADIO{"28"}{iconurl}       	= "https://www.abc.net.au/cm/lb/8541768/thumbnail/station-logo-thumbnail.png";
+$ABCRADIO{"28"}{servicename}   	= "triplej";
+$ABCRADIO{"27"}{name}			= "ABC Classic";
+$ABCRADIO{"27"}{iconurl}		= "https://www.abc.net.au/cm/lb/9104270/thumbnail/station-logo-thumbnail.png";
+$ABCRADIO{"27"}{servicename}	= "classic";
+$ABCRADIO{"202"}{name}			= "ABC Kids Listen";
+$ABCRADIO{"202"}{iconurl}		= "https://www.abc.net.au/cm/lb/9317662/thumbnail/station-logo-thumbnail.jpg";
+$ABCRADIO{"202"}{servicename}	= "kidslisten";
+
 my %SBSRADIO;
 $SBSRADIO{"36"}{name}   = "SBS Arabic24";
 $SBSRADIO{"36"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
@@ -161,8 +170,7 @@ for my $tmpregion ( @REGIONS )
 {
 	if ($tmpregion->{id} eq $REGION) {
         $validregion = 1;
-        $REGION_TIMEZONE = $tmpregion->{timezone};
-        $REGION_NAME = $tmpregion->{name};
+		define_ABC_local_radio($tmpregion->{state});
 	}
 }
 die(	  "\n"
@@ -248,15 +256,26 @@ flock DBMRW, LOCK_EX;							# Lock it exclusively
 undef $dbrw;
 
 warn("Getting Channel list...\n") if ($VERBOSE);
-getchannels($ua);
+push(@CHANNELDATA,getchannels($ua, $REGION));
 push(@CHANNELDATA,SBSgetchannels());
 push(@CHANNELDATA,ABCgetchannels());
 
 warn("Getting EPG data...\n") if ($VERBOSE);
-getepg($ua);
+push(@GUIDEDATA,getepg($ua, $REGION));
 push(@GUIDEDATA,SBSgetepg($ua));
 push(@GUIDEDATA,ABCgetepg($ua));
+my ($rnchannel,@rnepg) = abcrn($ua);
+push(@CHANNELDATA,$rnchannel);
+push(@GUIDEDATA,@rnepg);
 
+warn("\nGetting extra channel and EPG data...\n\n") if ($VERBOSE);
+if (defined ($extrachannels))
+{
+	my ($extraregion, $extrachannel) = $extrachannels =~ /(\d+)-(.*)/;
+	my @channel_array = split(/,/,$extrachannel);
+	push(@CHANNELDATA,getchannels($ua, $extraregion, @channel_array));
+	push(@GUIDEDATA,getepg($ua, $extraregion, @channel_array));
+}
 warn("Closing Queues...\n") if ($VERBOSE);
 # this will close the queues
 $INQ->end();
@@ -377,63 +396,84 @@ sub url_fetch_thread
 
 sub getchannels
 {
-	my $ua = shift;
+	#my $ua = shift;
+	my ($ua, $region, @extrachannels) = @_;
+	my @channeldata;
 	warn("Getting channel list from YourTV ...\n") if ($VERBOSE);
-	my $url = "https://www.yourtv.com.au/api/regions/" . $REGION . "/channels";
+	my $url = "https://www.yourtv.com.au/api/regions/" . $region . "/channels";
 	my $res = $ua->get($url);
 	warn("Getting channel list from YourTV ... ( $url )\n") if ($VERBOSE);
 	my $tmpchanneldata;
 	die("Unable to connect to FreeView.\n") if (!$res->is_success);
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 	my $dupe_count = 0;
+	my $channelcount = 0;
 
 	for (my $count = 0; $count < @$tmpchanneldata; $count++)
 	{
 		next if ( ( grep( /^$tmpchanneldata->[$count]->{id}$/, @IGNORECHANNELS ) ) );
 		next if ( ( !( grep( /^$tmpchanneldata->[$count]->{number}$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
+		next if ( ( !( grep( /^$tmpchanneldata->[$count]->{number}$/, @extrachannels ) ) ) and ((@extrachannels > 0)));
+
 		my $channelIsDuped = 0;
 		++$channelIsDuped if ( ( grep( /$tmpchanneldata->[$count]->{number}$/, @DUPLICATED_CHANNELS ) ) );
-		$CHANNELDATA[$count]->{tv_id} = $tmpchanneldata->[$count]->{id};
-		$CHANNELDATA[$count]->{name} = $tmpchanneldata->[$count]->{description};
-		$CHANNELDATA[$count]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
-		$CHANNELDATA[$count]->{lcn} = $tmpchanneldata->[$count]->{number};
+		#$channeldata[$channelcount]->{tv_id} = $tmpchanneldata->[$count]->{id};
+		$channeldata[$channelcount]->{name} = $tmpchanneldata->[$count]->{description};
+		$channeldata[$channelcount]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
+		$channeldata[$channelcount]->{lcn} = $tmpchanneldata->[$count]->{number};
 		if (defined($tmpchanneldata->[$count]->{logo}->{url}))
 		{
-			$CHANNELDATA[$count]->{icon} = $tmpchanneldata->[$count]->{logo}->{url};
-			$CHANNELDATA[$count]->{icon} =~ s/.*(https.*?amazon.*)/$1/;
-			$CHANNELDATA[$count]->{icon} = uri_unescape($CHANNELDATA[$count]->{icon});
+			$channeldata[$channelcount]->{icon} = $tmpchanneldata->[$count]->{logo}->{url};
+			$channeldata[$channelcount]->{icon} =~ s/.*(https.*?amazon.*)/$1/;
+			$channeldata[$channelcount]->{icon} = uri_unescape($channeldata[$channelcount]->{icon});
 		}
-		$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
+		$channeldata[$channelcount]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
 		#FIX SBS ICONS
-		if (($USEFREEVIEWICONS) && (!defined($CHANNELDATA[$count]->{icon})) && ($CHANNELDATA[$count]->{name} =~ /SBS/))
+		if (($USEFREEVIEWICONS) && (!defined($channeldata[$channelcount]->{icon})) && ($channeldata[$channelcount]->{name} =~ /SBS/))
 		{
-			$tmpchanneldata->[$count]->{number} =~ s/(\d)./$1/;
-			$CHANNELDATA[$count]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
+			$tmpchanneldata->[$channelcount]->{number} =~ s/(\d)./$1/;
+			$channeldata[$channelcount]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
 		}
-		warn("Got channel $CHANNELDATA[$count]->{id} - $CHANNELDATA[$count]->{name} ...\n") if ($VERBOSE);
+
+		warn("Got channel $channeldata[$channelcount]->{id} - $channeldata[$channelcount]->{name} ...\n") if ($VERBOSE);
 		if ($channelIsDuped)
 		{
 			foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
 			{
 				next if ($DUPLICATE_CHANNELS{$dchan} ne $tmpchanneldata->[$count]->{number});
-				$DUPECHANDATA[$dupe_count]->{tv_id} = $CHANNELDATA[$count]->{tv_id};
-				$DUPECHANDATA[$dupe_count]->{name} = $CHANNELDATA[$count]->{name};
+				$DUPECHANDATA[$dupe_count]->{tv_id} = $channeldata[$count]->{tv_id};
+				$DUPECHANDATA[$dupe_count]->{name} = $channeldata[$count]->{name};
 				$DUPECHANDATA[$dupe_count]->{id} = $dchan . ".yourtv.com.au";
 				$DUPECHANDATA[$dupe_count]->{lcn} = $dchan;
-				$DUPECHANDATA[$dupe_count]->{icon} = $CHANNELDATA[$count]->{icon};
-				warn("Duplicated channel $CHANNELDATA[$count]->{name} -> $DUPECHANDATA[$dupe_count]->{id} ...\n") if ($VERBOSE);
+				$DUPECHANDATA[$dupe_count]->{icon} = $channeldata[$count]->{icon};
+				warn("Duplicated channel $channeldata[$count]->{name} -> $DUPECHANDATA[$dupe_count]->{id} ...\n") if ($VERBOSE);
 				++$dupe_count;
 			}
 		}
+		$channelcount++;
 	}
+	return @channeldata;
 }
 
 sub getepg
 {
-	my $ua = shift;
+	#my $ua = shift;
+	my ($ua, $region, @extrachannels) = @_;
 	my $showcount = 0;
 	my $dupe_scount = 0;
 	my $url;
+	my @guidedata;
+	my $region_timezone;
+	my $region_name;
+
+	for my $tmpregion ( @REGIONS )
+	{
+		if ($tmpregion->{id} eq $region) {
+        	$region_timezone = $tmpregion->{timezone};
+    	    $region_name = $tmpregion->{name};
+		}
+	}
+
 	warn(" \n") if ($VERBOSE);
 	my $nl = 0;
 	for(my $day = 0; $day < $NUMDAYS; $day++)
@@ -441,8 +481,8 @@ sub getepg
 		my $day = nextday($day);
 		my $id;
 		my $url = URI->new( 'https://www.yourtv.com.au/api/guide/' );
-		$url->query_form(day => $day, timezone => $REGION_TIMEZONE, format => 'json', region => $REGION);
-		warn(($nl ? "\n" : "" ) . "Getting channel program listing for $REGION_NAME ($REGION) for $day ($url)...\n") if ($VERBOSE);
+		$url->query_form(day => $day, timezone => $region_timezone, format => 'json', region => $region);
+		warn(($nl ? "\n" : "" ) . "Getting channel program listing for $region_name ($region) for $day ($url)...\n") if ($VERBOSE);
 		$nl = 0;
 		my $res = $ua->get($url);
 		die("Unable to connect to YourTV for $url.\n") if (!$res->is_success);
@@ -460,6 +500,11 @@ sub getepg
 				next if (!defined($chandata->[$channelcount]->{number}));
 				next if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @IGNORECHANNELS ) ) );
 				next if ( ( !( grep( /^$chandata->[$channelcount]->{number}$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
+				next if ( ( !( grep( /^$chandata->[$channelcount]->{number}$/, @extrachannels ) ) ) and ((@extrachannels > 0)));
+				#if (defined($extrachannel))
+				#{
+				#	next if ($chandata->[$channelcount]->{number} ne $extrachannel);
+				#}
 				my $channelIsDuped = 0;
 				$channelIsDuped = $chandata->[$channelcount]->{number} if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @DUPLICATED_CHANNELS ) ) );
 
@@ -493,7 +538,7 @@ sub getepg
 									# so we just need to know if the airing is within our cachetime
 									# however at this level the aring has just things like "5:30 AM" or "6:00 PM"
 									# so we need to do some conversions
-									my $offset = getTimeOffset($REGION_TIMEZONE, $subblocks->[$airingcount]->{date}, $day);
+									my $offset = getTimeOffset($region_timezone, $subblocks->[$airingcount]->{date}, $day);
 									warn("Checking $offset against $CACHETIME\n") if ($DEBUG);
 									$usecache = 0 if (abs($offset) eq $offset && $CACHETIME > $offset);
 								}
@@ -563,29 +608,29 @@ sub getepg
 						};
 						if (defined($showdata))
 						{
-							$GUIDEDATA[$showcount]->{id} = $id;
-							$GUIDEDATA[$showcount]->{airing_tmp} = $airing;
-							$GUIDEDATA[$showcount]->{desc} = $showdata->{synopsis};
-							$GUIDEDATA[$showcount]->{subtitle} = $showdata->{episodeTitle};
-							$GUIDEDATA[$showcount]->{start} = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
-							$GUIDEDATA[$showcount]->{stop} = addTime($showdata->{duration},$GUIDEDATA[$showcount]->{start});
-							$GUIDEDATA[$showcount]->{start} =~ s/[-T:]//g;
-							$GUIDEDATA[$showcount]->{start} =~ s/\+/ \+/g;
-							$GUIDEDATA[$showcount]->{stop} =~ s/[-T:]//g;
-							$GUIDEDATA[$showcount]->{stop} =~ s/\+/ \+/g;
-							$GUIDEDATA[$showcount]->{channel} = $showdata->{service}->{description};
-							$GUIDEDATA[$showcount]->{title} = $showdata->{title};
-							$GUIDEDATA[$showcount]->{rating} = $showdata->{classification};
+							$guidedata[$showcount]->{id} = $id;
+							$guidedata[$showcount]->{airing_tmp} = $airing;
+							$guidedata[$showcount]->{desc} = $showdata->{synopsis};
+							$guidedata[$showcount]->{subtitle} = $showdata->{episodeTitle};
+							$guidedata[$showcount]->{start} = toLocalTimeString($showdata->{date},$region_timezone);
+							$guidedata[$showcount]->{stop} = addTime($showdata->{duration},$guidedata[$showcount]->{start});
+							$guidedata[$showcount]->{start} =~ s/[-T:]//g;
+							$guidedata[$showcount]->{start} =~ s/\+/ \+/g;
+							$guidedata[$showcount]->{stop} =~ s/[-T:]//g;
+							$guidedata[$showcount]->{stop} =~ s/\+/ \+/g;
+							$guidedata[$showcount]->{channel} = $showdata->{service}->{description};
+							$guidedata[$showcount]->{title} = $showdata->{title};
+							$guidedata[$showcount]->{rating} = $showdata->{classification};
 							if (defined($showdata->{program}->{image}))
 							{
-								$GUIDEDATA[$showcount]->{url} = $showdata->{program}->{image};
+								$guidedata[$showcount]->{url} = $showdata->{program}->{image};
 							}
 							else
 							{
-								$GUIDEDATA[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$GUIDEDATA[$showcount]->{title},$GUIDEDATA[$showcount]->{start},$GUIDEDATA[$showcount]->{stop});
+								$guidedata[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$guidedata[$showcount]->{title},$guidedata[$showcount]->{start},$guidedata[$showcount]->{stop});
 							}
-							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{genre}->{name});
-							push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{subGenre}->{name}) if (defined($showdata->{subGenre}->{name}));
+							push(@{$guidedata[$showcount]->{category}}, $showdata->{genre}->{name});
+							push(@{$guidedata[$showcount]->{category}}, $showdata->{subGenre}->{name}) if (defined($showdata->{subGenre}->{name}));
 							#	program types as defined by yourtv $showdata->{programType}->{id}
 							#	1	 Television movie
 							#	2	 Cinema movie
@@ -594,85 +639,103 @@ sub getepg
 							#	5	 Series with episodes
 							#	8	 Limited series
 							#	9	 Special
-							my $tmpseries = toLocalTimeString($showdata->{date},$REGION_TIMEZONE);
+							my $tmpseries = toLocalTimeString($showdata->{date},$region_timezone);
 							my ($episodeYear, $episodeMonth, $episodeDay, $episodeHour, $episodeMinute) = $tmpseries =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/;#S$1E$2$3$4$5/;
 
 							if (defined($showdata->{programType}->{id})) {
 								my $programtype = $showdata->{programType}->{id};
 								if ($programtype eq "1") {
-									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+									push(@{$guidedata[$showcount]->{category}}, $showdata->{programType}->{name});
 								}
 								elsif ($programtype eq "2") {
-									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
+									push(@{$guidedata[$showcount]->{category}}, $showdata->{programType}->{name});
 								}
 								elsif ($programtype eq "3") {
-									push(@{$GUIDEDATA[$showcount]->{category}}, $showdata->{programType}->{name});
-									$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
-									$GUIDEDATA[$showcount]->{season} = "1";
+									push(@{$guidedata[$showcount]->{category}}, $showdata->{programType}->{name});
+									$guidedata[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
+									$guidedata[$showcount]->{season} = "1";
 								}
 								elsif ($programtype eq "4") {
-									$GUIDEDATA[$showcount]->{premiere} = "1";
-									$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
+									$guidedata[$showcount]->{premiere} = "1";
+									$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
 									if (defined($showdata->{episodeNumber}))
 									{
-										$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+										$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
 									}
 									else
 									{
-										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+										$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 									}
 									if (defined($showdata->{seriesNumber})) {
-										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+										$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
 									}
 									else
 									{
-										$GUIDEDATA[$showcount]->{season} = $episodeYear;
+										$guidedata[$showcount]->{season} = $episodeYear;
 									}
 								}
 								elsif ($programtype eq "5")
 								{
 									if (defined($showdata->{seriesNumber})) {
-										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+										$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
 									}
 									else
 									{
-										$GUIDEDATA[$showcount]->{season} = $episodeYear;
+										$guidedata[$showcount]->{season} = $episodeYear;
 									}
 									if (defined($showdata->{episodeNumber})) {
-										$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+										$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
 									}
 									else
 									{
-										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+										$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 									}
 								}
 								elsif ($programtype eq "8")
 								{
 									if (defined($showdata->{seriesNumber})) {
-										$GUIDEDATA[$showcount]->{season} = $showdata->{seriesNumber};
+										$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
 									}
 									else
 									{
-										$GUIDEDATA[$showcount]->{season} = $episodeYear;
+										$guidedata[$showcount]->{season} = $episodeYear;
 									}
 									if (defined($showdata->{episodeNumber})) {
-										$GUIDEDATA[$showcount]->{episode} = $showdata->{episodeNumber};
+										$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
 									}
 									else
 									{
-										$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+										$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 									}
 								}
 								elsif ($programtype eq "9")
 								{
-									$GUIDEDATA[$showcount]->{season} = $episodeYear;
-									$GUIDEDATA[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									$guidedata[$showcount]->{season} = $episodeYear;
+									$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 								}
 							}
 							if (defined($showdata->{repeat} ) )
 							{
-								$GUIDEDATA[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
-								$GUIDEDATA[$showcount]->{previouslyshown} = "$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
+								$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
+								$guidedata[$showcount]->{previouslyshown} = "$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
+							}
+							if (defined($showdata->{program}->{imdbId} ) )
+							{
+								$guidedata[$showcount]->{imdb} = $showdata->{program}->{imdbId};
+							}
+
+							if ($channelIsDuped)
+							{
+								foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
+								{
+									next if ($DUPLICATE_CHANNELS{$dchan} ne $channelIsDuped);
+									my $did = $dchan . ".yourtv.com.au";
+									$DUPEGUIDEDATA[$DUPES_COUNT] = clone($guidedata[$showcount]);
+									$DUPEGUIDEDATA[$DUPES_COUNT]->{id} = $did;
+									$DUPEGUIDEDATA[$DUPES_COUNT]->{channel} = $did;
+									warn("Duplicated guide data for show entry $showcount -> $DUPES_COUNT ($guidedata[$showcount] -> $DUPEGUIDEDATA[$DUPES_COUNT]) ...\n") if ($DEBUG);
+									++$DUPES_COUNT;
+								}
 							}
 							if (defined($showdata->{program}->{imdbId} ) )
 							{
@@ -700,6 +763,7 @@ sub getepg
 		}
 	}
 	warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
+	return @guidedata;
 }
 
 sub printchannels
@@ -1053,8 +1117,9 @@ sub usage
 		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
 		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
 		. "\t--ignore=<channel to ignore>\tA comma separated list of channel numbers to ignore. The channel number is matched against the lcn tag within the xml.\n"
-		. "\t--duplicates <orig>=<ch1>,<ch2>\tOption maybe specified more than once, this will create a guide where different channels have the same data.\n"
+		. "\t--duplicates <orig>=<ch1>,<ch2>\tOption may be specified more than once, this will create a guide where different channels have the same data.\n"
 		. "\t--include=<channel to include>\tA comma separated list of channel numbers to include. The channel number is matched against the lcn tag within the xml.\n"
+		. "\t--extrachannels <region>-<ch1>,<ch2>\tThis will fetch EPG data for the channels specified from one other region.\n"
 		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
 		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
 		. "\t--help\t\t\t\tWill print this usage and exit!\n"
@@ -1064,6 +1129,34 @@ sub usage
 }
 
 ################# RADIO
+
+sub define_ABC_local_radio
+{
+	my $state = shift;
+	my %definedregions = (
+		"WA"	=> "local_perth", #     =       Perth
+		"SA"	=> "local_adelaide", #       Adelaide
+		"TAS" 	=>	"local_hobart", #      Hobart
+		"VIC"	=>	"local_melbourne",	#Melbourne
+		"QLD"	=>	"local_brisbane",
+		"NSW"	=>	"local_sydney",
+		"NT"	=> 	"local_darwin",
+		"ACT"	=> 	"local_canberra",
+	);
+	my %icons = (
+		"WA"	=> "http://www.abc.net.au/radio/images/service/ABC-Radio-Perth.png",
+		"SA"	=> "http://www.abc.net.au/radio/images/service/ABC-Radio-Adelaide.png",
+		"TAS" 	=>	"http://www.abc.net.au/radio/images/service/ABC-Radio-Hobart.png",
+		"VIC"	=>	"http://www.abc.net.au/radio/images/service/ABC-Radio-Melbourne.png",
+		"QLD"	=>	"http://www.abc.net.au/radio/images/service/ABC-Radio-Brisbane.png",
+		"NSW"	=>	"http://www.abc.net.au/radio/images/service/ABC-Radio-Sydney.png",
+		"NT"	=> 	"http://www.abc.net.au/radio/images/service/ABC-Radio-Darwin.png",
+		"ACT"	=> 	"http://www.abc.net.au/radio/images/service/ABC-Radio-Canberra.png",
+	);
+	$ABCRADIO{"25"}{name}  = "ABC Local Radio";
+	$ABCRADIO{"25"}{iconurl}       = $icons{$state};
+	$ABCRADIO{"25"}{servicename}   = $definedregions{$state};
+}
 
 sub ABCgetchannels
 {
@@ -1218,5 +1311,58 @@ sub SBSgetepg
         }
         warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
         return @tmpguidedata;
+}
+
+sub abcrn
+{
+   my $ua = shift;
+   my $url = "https://www.abc.net.au/radionational/guide/rn-on-air-schedule/day=week";
+   my $timezone = "Australia/Melbourne";
+   my $channel;
+   $channel->{name} = "ABC Radio National";
+   $channel->{id} = "26.yourtv.com.au";
+   $channel->{lcn} = 26;
+   $channel->{icon} = "https://www.abc.net.au/news/image/8054480-3x2-940x627.jpg";
+   my @tmpguidedata;
+   my $html = $ua->get($url);
+   $html = $html->content;
+   my $data = 0;
+   my $showcount = 0;
+   my $te = HTML::TableExtract->new( keep_html => 1, headers => ["Program time","Program name","Program description"] );
+   $te->parse($html);
+   foreach my $ts ($te->tables)
+   {
+     foreach my $row ($ts->rows) {
+         my ($hour, $minute, $ampm) = $row->[0] =~ /^(\d+):(\d+)(AM|PM)$/; # split it up
+         my $dt = DateTime->now(time_zone => $timezone);
+         $dt->set_hour($hour);
+	      $dt->add(hours => 12) if ($ampm eq "PM" and $hour ne 12);
+	      $dt->set_minute($minute);
+	      $dt->set_second("00");
+         my $dtz = DateTime::TimeZone->new( name => $timezone );
+	      my $localoffset = $dtz->offset_for_datetime($dt);
+	      $localoffset = $localoffset/3600;
+	      if ($localoffset =~ /\./)
+	      {
+		      $localoffset =~ s/(.*)(\..*)/$1$2/;
+		      $localoffset = sprintf("+%0.2d:%0.2d", $1, ($2*60));
+	      }
+         else
+         {
+		      $localoffset = sprintf("+%0.2d:00", $localoffset);
+	      }
+	      $tmpguidedata[$showcount]->{start} = $dt->ymd("") . $dt->hms("") . " " . $localoffset;
+         $tmpguidedata[$showcount-1]->{stop} = $tmpguidedata[$showcount]->{start} if ($showcount > 0);
+         $tmpguidedata[$showcount]->{id} = "26.yourtv.com.au";
+         $tmpguidedata[$showcount]->{title} = $row->[1];
+         $tmpguidedata[$showcount]->{title} =~ s/.*>(.*)<.*/$1/;
+         push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
+			$tmpguidedata[$showcount]->{desc} =  $row->[2];
+			$showcount++;
+     };
+  }
+  #remove the last element as we don't know the stop time
+  pop @tmpguidedata;
+  return ($channel,@tmpguidedata);
 }
 
