@@ -312,6 +312,7 @@ $XML->startTag('tv', 'source-info-name' => $message, 'generator-info-url' => "ht
 warn("Building the channel list...\n") if ($VERBOSE);
 printchannels(\$XML);
 warn("Building the EPG list...\n") if ($VERBOSE);
+use Data::Dumper;print Dumper @GUIDEDATA;
 printepg(\$XML);
 warn("Finishing the XML...\n") if ($VERBOSE);
 $XML->endTag('tv');
@@ -723,7 +724,6 @@ sub getepg
 							{
 								$guidedata[$showcount]->{imdb} = $showdata->{program}->{imdbId};
 							}
-
 							if ($channelIsDuped)
 							{
 								foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
@@ -735,24 +735,6 @@ sub getepg
 									$DUPEGUIDEDATA[$DUPES_COUNT]->{channel} = $did;
 									warn("Duplicated guide data for show entry $showcount -> $DUPES_COUNT ($guidedata[$showcount] -> $DUPEGUIDEDATA[$DUPES_COUNT]) ...\n") if ($DEBUG);
 									++$DUPES_COUNT;
-								}
-							}
-							if (defined($showdata->{program}->{imdbId} ) )
-							{
-								$GUIDEDATA[$showcount]->{imdb} = $showdata->{program}->{imdbId};
-							}
-
-							if ($channelIsDuped)
-							{
-								foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
-								{
-									next if ($DUPLICATE_CHANNELS{$dchan} ne $channelIsDuped);
-									my $did = $dchan . ".yourtv.com.au";
-									$DUPEGUIDEDATA[$dupe_scount] = clone($GUIDEDATA[$showcount]);
-									$DUPEGUIDEDATA[$dupe_scount]->{id} = $did;
-									$DUPEGUIDEDATA[$dupe_scount]->{channel} = $did;
-									warn("Duplicated guide data for show entry $showcount -> $dupe_scount ($GUIDEDATA[$showcount] -> $DUPEGUIDEDATA[$dupe_scount]) ...\n") if ($DEBUG);
-									++$dupe_scount;
 								}
 							}
 							$showcount++;
