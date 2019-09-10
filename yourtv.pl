@@ -312,7 +312,6 @@ $XML->startTag('tv', 'source-info-name' => $message, 'generator-info-url' => "ht
 warn("Building the channel list...\n") if ($VERBOSE);
 printchannels(\$XML);
 warn("Building the EPG list...\n") if ($VERBOSE);
-use Data::Dumper;print Dumper @GUIDEDATA;
 printepg(\$XML);
 warn("Finishing the XML...\n") if ($VERBOSE);
 $XML->endTag('tv');
