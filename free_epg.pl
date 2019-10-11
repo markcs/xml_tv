@@ -210,7 +210,7 @@ sub getepg
 			}
 		}
 	}
-	warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
+	warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
 }
 
 sub printchannels
