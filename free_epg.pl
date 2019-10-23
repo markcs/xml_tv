@@ -78,7 +78,7 @@ warn("Options...\nVerbose = $VERBOSE, days = $NUMDAYS, pretty = $pretty, region=
 
 # Initialise here (connections to the same server will be cached)
 my $ua = LWP::UserAgent->new;
-$ua->agent("FreeView-EPG-Fetch/1.0");
+$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:71.0) Gecko/20100101 Firefox/71.0");
 
 getchannels($ua);
 getepg($ua);
@@ -135,6 +135,7 @@ sub getepg
 {
 	my $ua = shift;
 	my $showcount = 0;
+	my $errcount = 0;
 	foreach my $channel (@CHANNELDATA)
 	{
 		my $id = $channel->{dvb_triplet};
@@ -150,13 +151,26 @@ sub getepg
 			my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime($now+$offset+86400);
 			my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
 			my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
-			warn("\tGetting programs between $startdate and $enddate ...\n") if ($VERBOSE);
+			print("\tGetting programs between $startdate and $enddate ... ") if ($VERBOSE);
 			my $data;
 			$url = "https://fvau-api-prod.switch.tv/content/v1/epgs/" . $id . "?start=" . $startdate . "&end=" . $enddate
 				. "&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
-			my $res = $ua->get($url);
-			die("Unable to connect to FreeView. [" . $res->status_line . "]\n") if (!$res->is_success);
-			$data = $res->content;
+			my $retry = 0;
+			while (1) {
+				my $res = $ua->get($url);
+				if ($res->is_success) {
+					print("OK!\n") if ($VERBOSE);
+					$data = $res->content;
+					last;
+				}
+				else {
+					$errcount++;
+					$retry++;
+					print("FAIL! [" . $res->status_line . "]\n") if ($VERBOSE);
+					die("\tUnable to connect to FreeView. [" . $res->status_line . "]\n") if ($retry > 5);
+					print("\tRetry $retry ... ") if ($VERBOSE);
+				}
+			}
 			my $tmpdata;
 			eval {
 				$tmpdata = decode_json($data);
@@ -210,6 +224,7 @@ sub getepg
 			}
 		}
 	}
+	warn("A total of [" . $errcount . "] errors occurred ...\n") if ($VERBOSE);
 	warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
 }
 
