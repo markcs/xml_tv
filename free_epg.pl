@@ -78,7 +78,7 @@ warn("Options...\nVerbose = $VERBOSE, days = $NUMDAYS, pretty = $pretty, region=
 
 # Initialise here (connections to the same server will be cached)
 my $ua = LWP::UserAgent->new;
-$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:71.0) Gecko/20100101 Firefox/71.0");
+$ua->agent("FreeView-EPG-Fetch/1.0");
 
 getchannels($ua);
 getepg($ua);
