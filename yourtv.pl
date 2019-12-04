@@ -981,14 +981,12 @@ sub getFVShowIcon
 	{
 		for (my $count = 0; $count < @$tmpchanneldata; $count++)
 		{
-			my $titlesafe = $title;
-			$titlesafe =~ s/([\(\)\[\]\{\}\\\*\?\.\$\^\@\!\&])/\\$1/g;
-			if ($tmpchanneldata->[$count]->{related}->{shows}[0]->{title} =~ /$titlesafe/i)
+			if ($tmpchanneldata->[$count]->{related}->{shows}[0]->{title} =~ /\Q$title\E/i)
 			{
 				$returnurl = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
 				return $returnurl;
 			}
-			elsif ($tmpchanneldata->[$count]->{related}->{episodes}[0]->{title} =~ /$titlesafe/i)
+			elsif ($tmpchanneldata->[$count]->{related}->{episodes}[0]->{title} =~ /\Q$title\E/i)
 			{
 				$returnurl = $tmpchanneldata->[$count]->{related}->{episodes}[0]->{images}[0]->{url};
 				return $returnurl;
