@@ -776,7 +776,12 @@ sub printepg
 		foreach my $category (@{$items->{category}}) {
 			${$XMLRef}->dataElement('category', sanitizeText($category));
 		}
-		${$XMLRef}->emptyTag('icon', 'src' => $items->{url}) if (defined($items->{url}));
+		my $uri = $items->{url};
+		if (defined $uri)
+		{
+			$uri =~ s/\s/\%20/g;
+			${$XMLRef}->emptyTag('icon', 'src' => $uri);
+		}
 		if (defined($items->{season}) && defined($items->{episode}))
 		{
 			my $episodeseries = sprintf("S%0.2dE%0.2d",$items->{season}, $items->{episode});
