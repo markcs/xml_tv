@@ -413,7 +413,7 @@ sub getchannels
 
 	for (my $count = 0; $count < @$tmpchanneldata; $count++)
 	{
-		next if ( ( grep( /^$tmpchanneldata->[$count]->{id}$/, @IGNORECHANNELS ) ) );
+		next if ( ( grep( /^$tmpchanneldata->[$count]->{number}$/, @IGNORECHANNELS ) ) );
 		next if ( ( !( grep( /^$tmpchanneldata->[$count]->{number}$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 		next if ( ( !( grep( /^$tmpchanneldata->[$count]->{number}$/, @extrachannels ) ) ) and ((@extrachannels > 0)));
 
