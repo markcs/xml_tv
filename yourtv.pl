@@ -95,6 +95,9 @@ $ABCRADIO{"28"}{servicename}   	= "triplej";
 $ABCRADIO{"27"}{name}			= "ABC Classic";
 $ABCRADIO{"27"}{iconurl}		= "https://www.abc.net.au/cm/lb/9104270/thumbnail/station-logo-thumbnail.png";
 $ABCRADIO{"27"}{servicename}	= "classic";
+$ABCRADIO{"26"}{name}			= "ABC Radio National";
+$ABCRADIO{"26"}{iconurl}		= "https://www.abc.net.au/news/image/8054480-3x2-940x627.jpg";
+$ABCRADIO{"26"}{servicename}	= "RN";
 $ABCRADIO{"202"}{name}			= "ABC Kids Listen";
 $ABCRADIO{"202"}{iconurl}		= "https://www.abc.net.au/cm/lb/9317662/thumbnail/station-logo-thumbnail.jpg";
 $ABCRADIO{"202"}{servicename}	= "kidslisten";
@@ -187,6 +190,8 @@ my @IGNORECHANNELS;
 my @INCLUDECHANNELS;
 @INCLUDECHANNELS = split(/,/,$includechannels) if (defined($includechannels));
 
+warn("ignored channels: @IGNORECHANNELS \n\n") if ($VERBOSE);
+
 getFVInfo($ua);
 
 warn("Initializing queues...\n") if ($VERBOSE);
@@ -262,11 +267,8 @@ push(@CHANNELDATA,ABCgetchannels());
 
 warn("Getting EPG data...\n") if ($VERBOSE);
 push(@GUIDEDATA,getepg($ua, $REGION));
-push(@GUIDEDATA,SBSgetepg($ua));
 push(@GUIDEDATA,ABCgetepg($ua));
-my ($rnchannel,@rnepg) = abcrn($ua);
-push(@CHANNELDATA,$rnchannel);
-push(@GUIDEDATA,@rnepg);
+push(@GUIDEDATA,SBSgetepg($ua));
 
 warn("\nGetting extra channel and EPG data...\n\n") if ($VERBOSE);
 if (defined ($extrachannels))
@@ -1145,6 +1147,8 @@ sub ABCgetchannels
         my @tmpdata;
         foreach my $key (keys %ABCRADIO)
         {
+                next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+
                 $tmpdata[$count]->{name} = $ABCRADIO{$key}{name};
                 $tmpdata[$count]->{id} = $key.".yourtv.com.au";
                 $tmpdata[$count]->{lcn} = $key;
@@ -1159,10 +1163,13 @@ sub ABCgetepg
         my $ua = shift;
         my $showcount = 0;
         my @tmpguidedata;
+		warn("Getting epg for ABC Radio Stations ...\n") if ($VERBOSE);											
         foreach my $key (keys %ABCRADIO)
         {
+                next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+				
                 my $id = $key;
-                warn("Getting epg for $ABCRADIO{$key}{name} ...\n") if ($VERBOSE);
+                warn("$ABCRADIO{$key}{name} ...\n") if ($VERBOSE);
                 my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time-86400);
                 my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
                 my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
@@ -1228,6 +1235,8 @@ sub SBSgetchannels
         my $count = 0;
         foreach my $key (keys %SBSRADIO)
         {
+                next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+
                 $tmpdata[$count]->{name} = $SBSRADIO{$key}{name};
                 $tmpdata[$count]->{id} = $key.".yourtv.com.au";
                 $tmpdata[$count]->{lcn} = $key;
@@ -1242,10 +1251,13 @@ sub SBSgetepg
         my $ua = shift;
         my $showcount = 0;
         my @tmpguidedata;
+		warn("Getting epg for SBS Radio Stations ...\n") if ($VERBOSE);
         foreach my $key (keys %SBSRADIO)
         {
+                next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+				
                 my $id = $key;
-                warn("Getting epg for $SBSRADIO{$key}{name} ...\n") if ($VERBOSE);
+                warn("$SBSRADIO{$key}{name} ...\n") if ($VERBOSE);
                 my $now = time;;
                 my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time);
                 my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
@@ -1293,57 +1305,3 @@ sub SBSgetepg
         warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
         return @tmpguidedata;
 }
-
-sub abcrn
-{
-   my $ua = shift;
-   my $url = "https://www.abc.net.au/radionational/guide/rn-on-air-schedule/day=week";
-   my $timezone = "Australia/Melbourne";
-   my $channel;
-   $channel->{name} = "ABC Radio National";
-   $channel->{id} = "26.yourtv.com.au";
-   $channel->{lcn} = 26;
-   $channel->{icon} = "https://www.abc.net.au/news/image/8054480-3x2-940x627.jpg";
-   my @tmpguidedata;
-   my $html = $ua->get($url);
-   $html = $html->content;
-   my $data = 0;
-   my $showcount = 0;
-   my $te = HTML::TableExtract->new( keep_html => 1, headers => ["Program time","Program name","Program description"] );
-   $te->parse($html);
-   foreach my $ts ($te->tables)
-   {
-     foreach my $row ($ts->rows) {
-         my ($hour, $minute, $ampm) = $row->[0] =~ /^(\d+):(\d+)(AM|PM)$/; # split it up
-         my $dt = DateTime->now(time_zone => $timezone);
-         $dt->set_hour($hour);
-	      $dt->add(hours => 12) if ($ampm eq "PM" and $hour ne 12);
-	      $dt->set_minute($minute);
-	      $dt->set_second("00");
-         my $dtz = DateTime::TimeZone->new( name => $timezone );
-	      my $localoffset = $dtz->offset_for_datetime($dt);
-	      $localoffset = $localoffset/3600;
-	      if ($localoffset =~ /\./)
-	      {
-		      $localoffset =~ s/(.*)(\..*)/$1$2/;
-		      $localoffset = sprintf("+%0.2d:%0.2d", $1, ($2*60));
-	      }
-         else
-         {
-		      $localoffset = sprintf("+%0.2d:00", $localoffset);
-	      }
-	      $tmpguidedata[$showcount]->{start} = $dt->ymd("") . $dt->hms("") . " " . $localoffset;
-         $tmpguidedata[$showcount-1]->{stop} = $tmpguidedata[$showcount]->{start} if ($showcount > 0);
-         $tmpguidedata[$showcount]->{id} = "26.yourtv.com.au";
-         $tmpguidedata[$showcount]->{title} = $row->[1];
-         $tmpguidedata[$showcount]->{title} =~ s/.*>(.*)<.*/$1/;
-         push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
-			$tmpguidedata[$showcount]->{desc} =  $row->[2];
-			$showcount++;
-     };
-  }
-  #remove the last element as we don't know the stop time
-  pop @tmpguidedata;
-  return ($channel,@tmpguidedata);
-}
-
