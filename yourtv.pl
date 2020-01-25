@@ -978,22 +978,28 @@ sub getFVShowIcon
 		my $url = "https://fvau-api-prod.switch.tv/content/v1/epgs/".$dvb_triplet."?start=".$startTime."&end=".$stopTime."&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
 		my $res = $ua->get($url);
 		die("Unable to connect to FreeView.\n") if (!$res->is_success);
-		$data = $res->content;
-		$fvthrdret{$hash} = $data;
+		my $responsecode = $res->code();
+		if ($responsecode == 204) {
+			$data = "{}";
+		}
+		else {
+			$data = $res->content;
+			$fvthrdret{$hash} = $data;
+		}
 		print "+" if ($VERBOSE);
 	}
 	my $tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 	$tmpchanneldata = $tmpchanneldata->{data};
 	if (defined($tmpchanneldata))
 	{
-		for (my $count = 0; $count < @$tmpchanneldata; $count++)
+		for (my $count = 0; $count < scalar @$tmpchanneldata; $count++)
 		{
 			if ($tmpchanneldata->[$count]->{related}->{shows}[0]->{title} =~ /\Q$title\E/i)
 			{
 				$returnurl = $tmpchanneldata->[$count]->{related}->{shows}[0]->{images}[0]->{url};
 				return $returnurl;
 			}
-			elsif ($tmpchanneldata->[$count]->{related}->{episodes}[0]->{title} =~ /\Q$title\E/i)
+			elsif ((defined($tmpchanneldata->[$count]->{related}->{episodes}[0]->{title})) and ($tmpchanneldata->[$count]->{related}->{episodes}[0]->{title} =~ /\Q$title\E/i))
 			{
 				$returnurl = $tmpchanneldata->[$count]->{related}->{episodes}[0]->{images}[0]->{url};
 				return $returnurl;
@@ -1065,7 +1071,6 @@ sub getFVInfo
 		{
 			$FVICONS->{$tmpchanneldata->[$count]->{lcn}} = $tmpchanneldata->[$count]->{related}->{images}[0]->{url};
 			$DVBTRIPLET->{$tmpchanneldata->[$count]->{lcn}} = $tmpchanneldata->[$count]->{'dvb_triplet'};
-
         }
 	}
 }
@@ -1168,11 +1173,11 @@ sub ABCgetepg
         my $ua = shift;
         my $showcount = 0;
         my @tmpguidedata;
-		warn("Getting epg for ABC Radio Stations ...\n") if ($VERBOSE);											
+		warn("Getting epg for ABC Radio Stations ...\n") if ($VERBOSE);
         foreach my $key (keys %ABCRADIO)
         {
                 next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
-				
+
                 my $id = $key;
                 warn("$ABCRADIO{$key}{name} ...\n") if ($VERBOSE);
                 my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time-86400);
@@ -1260,7 +1265,7 @@ sub SBSgetepg
         foreach my $key (keys %SBSRADIO)
         {
                 next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
-				
+
                 my $id = $key;
                 warn("$SBSRADIO{$key}{name} ...\n") if ($VERBOSE);
                 my $now = time;;
