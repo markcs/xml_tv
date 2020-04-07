@@ -639,6 +639,7 @@ sub getepg
 							#	3	 Mini series
 							#	4	 Series no episodes
 							#	5	 Series with episodes
+							#   6    Serial
 							#	8	 Limited series
 							#	9	 Special
 							my $tmpseries = toLocalTimeString($showdata->{date},$region_timezone);
@@ -677,6 +678,23 @@ sub getepg
 									}
 								}
 								elsif ($programtype eq "5")
+								{
+									if (defined($showdata->{seriesNumber})) {
+										$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
+									}
+									else
+									{
+										$guidedata[$showcount]->{season} = $episodeYear;
+									}
+									if (defined($showdata->{episodeNumber})) {
+										$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
+									}
+									else
+									{
+										$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+									}
+								}
+								elsif ($programtype eq "6")
 								{
 									if (defined($showdata->{seriesNumber})) {
 										$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
