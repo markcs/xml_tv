@@ -99,7 +99,7 @@ $ABCRADIO{"26"}{name}			= "ABC Radio National";
 $ABCRADIO{"26"}{iconurl}		= "https://www.abc.net.au/news/image/8054480-3x2-940x627.jpg";
 $ABCRADIO{"26"}{servicename}	= "RN";
 $ABCRADIO{"202"}{name}			= "ABC Kids Listen";
-$ABCRADIO{"202"}{iconurl}		= "https://www.abc.net.au/cm/lb/9317662/thumbnail/station-logo-thumbnail.jpg";
+$ABCRADIO{"202"}{iconurl}		= "https://d24j9r7lck9cin.cloudfront.net/l/o/7/7118.1519190192.png";
 $ABCRADIO{"202"}{servicename}	= "kidslisten";
 
 my %SBSRADIO;
