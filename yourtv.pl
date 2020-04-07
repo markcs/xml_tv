@@ -83,24 +83,35 @@ GetOptions
 ) or die ("Syntax Error!  Try $0 --help");
 
 my %ABCRADIO;
-$ABCRADIO{"200"}{name}  = "Double J";
-$ABCRADIO{"200"}{iconurl}       = "https://www.abc.net.au/cm/lb/8811932/thumbnail/station-logo-thumbnail.jpg";
-$ABCRADIO{"200"}{servicename}   = "doublej";
-$ABCRADIO{"201"}{name}  = "ABC Jazz";
-$ABCRADIO{"201"}{iconurl}       = "https://www.abc.net.au/cm/lb/8785730/thumbnail/station-logo-thumbnail.png";
-$ABCRADIO{"201"}{servicename}   = "jazz";
-$ABCRADIO{"28"}{name}  			= "Triple J";
-$ABCRADIO{"28"}{iconurl}       	= "https://www.abc.net.au/cm/lb/8541768/thumbnail/station-logo-thumbnail.png";
-$ABCRADIO{"28"}{servicename}   	= "triplej";
-$ABCRADIO{"27"}{name}			= "ABC Classic";
-$ABCRADIO{"27"}{iconurl}		= "https://www.abc.net.au/cm/lb/9104270/thumbnail/station-logo-thumbnail.png";
-$ABCRADIO{"27"}{servicename}	= "classic";
-$ABCRADIO{"26"}{name}			= "ABC Radio National";
-$ABCRADIO{"26"}{iconurl}		= "https://www.abc.net.au/news/image/8054480-3x2-940x627.jpg";
-$ABCRADIO{"26"}{servicename}	= "RN";
+$ABCRADIO{"200"}{name}			= "Double J";
+$ABCRADIO{"200"}{iconurl}		= "https://www.abc.net.au/cm/lb/8811932/thumbnail/station-logo-thumbnail.jpg";
+$ABCRADIO{"200"}{servicename}	= "doublej";
+$ABCRADIO{"201"}{name}  		= "ABC Jazz";
+$ABCRADIO{"201"}{iconurl}		= "https://www.abc.net.au/cm/lb/8785730/thumbnail/station-logo-thumbnail.png";
+$ABCRADIO{"201"}{servicename} 	= "jazz";
 $ABCRADIO{"202"}{name}			= "ABC Kids Listen";
 $ABCRADIO{"202"}{iconurl}		= "https://d24j9r7lck9cin.cloudfront.net/l/o/7/7118.1519190192.png";
 $ABCRADIO{"202"}{servicename}	= "kidslisten";
+$ABCRADIO{"203"}{name}			= "ABC Country";
+$ABCRADIO{"203"}{iconurl}		= "https://www.abc.net.au/radio/images/service/2018/country_480.png";
+$ABCRADIO{"203"}{servicename}	= "";
+$ABCRADIO{"204"}{name}			= "ABC News Radio";
+$ABCRADIO{"204"}{iconurl}		= "https://upload.wikimedia.org/wikipedia/commons/e/ee/ABC_News_Radio_2014.png";
+$ABCRADIO{"204"}{servicename}	= "";
+
+$ABCRADIO{"26"}{name}			= "ABC Radio National";
+$ABCRADIO{"26"}{iconurl}		= "https://www.abc.net.au/news/image/8054480-3x2-940x627.jpg";
+$ABCRADIO{"26"}{servicename}	= "RN";
+$ABCRADIO{"27"}{name}			= "ABC Classic";
+$ABCRADIO{"27"}{iconurl}		= "https://www.abc.net.au/cm/lb/9104270/thumbnail/station-logo-thumbnail.png";
+$ABCRADIO{"27"}{servicename}	= "classic";
+$ABCRADIO{"28"}{name}  			= "Triple J";
+$ABCRADIO{"28"}{iconurl} 		= "https://www.abc.net.au/cm/lb/8541768/thumbnail/station-logo-thumbnail.png";
+$ABCRADIO{"28"}{servicename}	= "triplej";
+$ABCRADIO{"29"}{name}  			= "Triple J Unearthed";
+$ABCRADIO{"29"}{iconurl} 		= "https://www.abc.net.au/cm/rimage/8869368-16x9-large.jpg?v=2";
+$ABCRADIO{"29"}{servicename}	= "";
+
 
 my %SBSRADIO;
 $SBSRADIO{"36"}{name}   = "SBS Arabic24";
@@ -1198,6 +1209,7 @@ sub ABCgetepg
 
                 my $id = $key;
                 warn("$ABCRADIO{$key}{name} ...\n") if ($VERBOSE);
+				next if ($ABCRADIO{$key}{servicename} eq "");
                 my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time-86400);
                 my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
                 my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
