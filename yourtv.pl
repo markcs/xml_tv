@@ -112,7 +112,6 @@ $ABCRADIO{"29"}{name}  			= "Triple J Unearthed";
 $ABCRADIO{"29"}{iconurl} 		= "https://www.abc.net.au/cm/rimage/8869368-16x9-large.jpg?v=2";
 $ABCRADIO{"29"}{servicename}	= "";
 
-
 my %SBSRADIO;
 $SBSRADIO{"36"}{name}   = "SBS Arabic24";
 $SBSRADIO{"36"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
@@ -284,6 +283,7 @@ push(@GUIDEDATA,SBSgetepg($ua));
 warn("\nGetting extra channel and EPG data...\n\n") if ($VERBOSE);
 if (defined ($extrachannels))
 {
+	die("--extrachannel option in wrong format. It should be <other region>-<channel number>,<channel number>,etc") if ($extrachannels !~ /(\d+)-.*/);
 	my ($extraregion, $extrachannel) = $extrachannels =~ /(\d+)-(.*)/;
 	my @channel_array = split(/,/,$extrachannel);
 	push(@CHANNELDATA,getchannels($ua, $extraregion, @channel_array));
