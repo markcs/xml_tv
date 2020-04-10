@@ -1017,7 +1017,18 @@ sub getFVShowIcon
 		}
 		print "+" if ($VERBOSE);
 	}
-	my $tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
+	my $tmpchanneldata;
+	eval
+	{
+		$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
+		1;
+	}
+	or do 
+	{
+		undef $fvdbm_hash{$hash};
+		undef $fvthrdret{$hash};
+	};
+	
 	$tmpchanneldata = $tmpchanneldata->{data};
 	if (defined($tmpchanneldata))
 	{
@@ -1265,7 +1276,7 @@ sub ABCgetepg
                 }
 
         }
-        warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
+        warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
         return @tmpguidedata;
 }
 
@@ -1342,6 +1353,6 @@ sub SBSgetepg
                 }
 
         }
-        warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
+        warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
         return @tmpguidedata;
 }
