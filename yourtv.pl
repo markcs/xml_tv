@@ -10,7 +10,7 @@ if ($threading_ok)
         use threads::shared;
 }
 
-my $MAX_THREADS = 7;
+my $MAX_THREADS = 4;
 
 use IO::Socket::SSL;
 my $FURL_OK = eval 'use Furl; 1';
@@ -747,8 +747,8 @@ sub getepg
 							}
 							if (defined($showdata->{repeat} ) )
 							{
-								$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
-								$guidedata[$showcount]->{previouslyshown} = "$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
+							#	$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
+								$guidedata[$showcount]->{previouslyshown} = 1; #"$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
 							}
 							if (defined($showdata->{program}->{imdbId} ) )
 							{
@@ -826,10 +826,11 @@ sub printepg
 		}
 		if (defined($items->{imdb}))
 		{
-			${$XMLRef}->dataElement('episode-num', "series/".$items->{imdb}, 'system' => 'imdb.com');
+			${$XMLRef}->dataElement('episode-num', "title/tt".$items->{imdb}, 'system' => 'imdb.com');
 		}
 		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
-		${$XMLRef}->emptyTag('previously-shown', 'start' => $items->{previouslyshown}) if (defined($items->{previouslyshown}));
+	#	${$XMLRef}->emptyTag('previously-shown', 'start' => $items->{previouslyshown}) if (defined($items->{previouslyshown}));
+		${$XMLRef}->emptyTag('previously-shown') if (defined($items->{previouslyshown}));
 		if (defined($items->{rating}))
 		{
 			${$XMLRef}->startTag('rating');
@@ -1017,10 +1018,10 @@ sub getFVShowIcon
 		}
 		print "+" if ($VERBOSE);
 	}
-	$data = "\"not\":\"formated\",\"correctly\":";
 	my $tmpchanneldata;
-	my $logfile = $outputfile =~ s/\xml$/log/r;
-	open (my $fh, '>', 'logfile.txt')  || die "can't open logfile.txt";
+	my $logfile = $outputfile =~ s/xml$/log/r;
+	
+	open (my $fh, '>', $logfile)  || die "can't open $logfile";
 	open (STDERR, ">>&=", $fh)         || die "can't redirect STDERR";
 	$fh->autoflush(1);
 	print $fh "$data\n";
