@@ -1017,17 +1017,24 @@ sub getFVShowIcon
 		}
 		print "+" if ($VERBOSE);
 	}
+	$data = "\"not\":\"formated\",\"correctly\":";
 	my $tmpchanneldata;
-	eval
-	{
+	my $logfile = $outputfile =~ s/\xml$/log/r;
+	open (my $fh, '>', 'logfile.txt')  || die "can't open logfile.txt";
+	open (STDERR, ">>&=", $fh)         || die "can't redirect STDERR";
+	$fh->autoflush(1);
+	print $fh "$data\n";
+	eval {
 		$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 		1;
-	}
-	or do 
+	} 
+ 	or do 
 	{
-		undef $fvdbm_hash{$hash};
-		undef $fvthrdret{$hash};
+		$fvdbm_hash{$hash} = undef;
+		$fvthrdret{$hash} = undef;
 	};
+	close $fh;
+	close STDERR;
 	
 	$tmpchanneldata = $tmpchanneldata->{data};
 	if (defined($tmpchanneldata))
