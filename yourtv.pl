@@ -10,7 +10,7 @@ if ($threading_ok)
         use threads::shared;
 }
 
-my $MAX_THREADS = 4;
+my $MAX_THREADS = 7;
 
 use IO::Socket::SSL;
 my $FURL_OK = eval 'use Furl; 1';
@@ -829,7 +829,6 @@ sub printepg
 			${$XMLRef}->dataElement('episode-num', "title/tt".$items->{imdb}, 'system' => 'imdb.com');
 		}
 		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
-	#	${$XMLRef}->emptyTag('previously-shown', 'start' => $items->{previouslyshown}) if (defined($items->{previouslyshown}));
 		${$XMLRef}->emptyTag('previously-shown') if (defined($items->{previouslyshown}));
 		if (defined($items->{rating}))
 		{
@@ -1022,6 +1021,7 @@ sub getFVShowIcon
 	my $logfile = $outputfile =~ s/xml$/log/r;
 	
 	open (my $fh, '>', $logfile)  || die "can't open $logfile";
+	open (my $STDOLD, '>&', STDERR);
 	open (STDERR, ">>&=", $fh)         || die "can't redirect STDERR";
 	$fh->autoflush(1);
 	print $fh "$data\n";
@@ -1035,8 +1035,8 @@ sub getFVShowIcon
 		$fvthrdret{$hash} = undef;
 	};
 	close $fh;
-	close STDERR;
-	
+	open (STDERR, '>&', $STDOLD);
+
 	$tmpchanneldata = $tmpchanneldata->{data};
 	if (defined($tmpchanneldata))
 	{
