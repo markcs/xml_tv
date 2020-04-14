@@ -21,6 +21,7 @@ if (!$FURL_OK)
 }
 
 use JSON;
+use JSON::Parse 'valid_json';
 use XML::Simple;
 use DateTime;
 use Getopt::Long;
@@ -993,16 +994,35 @@ sub getFVShowIcon
 	$stopTime = $stopdt->ymd('-') . 'T' . $stopdt->hms(':') . 'Z';
 	my $hash = "$dvb_triplet - $startTime";
 	my $data;
+	my $jsonvalid = 0;
 	if (defined ($fvdbm_hash{$hash} ))
 	{
-		$fvthrdret{$hash} = $fvdbm_hash{$hash};
-		$data = $fvdbm_hash{$hash};
+		if (valid_json ($fvdbm_hash{$hash}))
+		{
+			$fvthrdret{$hash} = $fvdbm_hash{$hash};
+			$data = $fvdbm_hash{$hash};
+			$jsonvalid = 1;
+		}
+		else 
+		{
+			undef $fvdbm_hash{$hash};
+			warn("JSON data invalid for $hash\n") if ($VERBOSE);
+		}
 	}
 	elsif (defined($fvthrdret{$hash}))
 	{
-		$data = $fvthrdret{$hash};
+		if (valid_json ($fvthrdret{$hash}))
+		{
+			$data = $fvdbm_hash{$hash};
+			$jsonvalid = 1;
+		}
+		else
+		{
+			undef $fvthrdret{$hash};
+			warn("JSON data invalid for $hash\n") if ($VERBOSE);
+		}
 	}
-	else
+	if ($jsonvalid == 0)
 	{
 		my $url = "https://fvau-api-prod.switch.tv/content/v1/epgs/".$dvb_triplet."?start=".$startTime."&end=".$stopTime."&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
 		my $res = $ua->get($url);
@@ -1025,18 +1045,9 @@ sub getFVShowIcon
 	open (STDERR, ">>&=", $fh)         || die "can't redirect STDERR";
 	$fh->autoflush(1);
 	print $fh "$data\n";
-	eval {
-		$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
-		1;
-	} 
- 	or do 
-	{
-		$fvdbm_hash{$hash} = undef;
-		$fvthrdret{$hash} = undef;
-	};
+	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 	close $fh;
 	open (STDERR, '>&', $STDOLD);
-
 	$tmpchanneldata = $tmpchanneldata->{data};
 	if (defined($tmpchanneldata))
 	{
@@ -1056,7 +1067,6 @@ sub getFVShowIcon
 	}
    	return;
 }
-
 
 sub getFVInfo
 {
