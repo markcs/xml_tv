@@ -993,7 +993,7 @@ sub getFVShowIcon
 	my $stopdt = $dt + DateTime::Duration->new( hours => 24 );
 	$stopTime = $stopdt->ymd('-') . 'T' . $stopdt->hms(':') . 'Z';
 	my $hash = "$dvb_triplet - $startTime";
-	my $data;
+	my $data = {};
 	my $jsonvalid = 0;
 	if (defined ($fvdbm_hash{$hash} ))
 	{
@@ -1013,7 +1013,7 @@ sub getFVShowIcon
 	{
 		if (valid_json ($fvthrdret{$hash}))
 		{
-			$data = $fvdbm_hash{$hash};
+			$data = $fvthrdret{$hash};
 			$jsonvalid = 1;
 		}
 		else
@@ -1022,18 +1022,20 @@ sub getFVShowIcon
 			warn("JSON data invalid for $hash\n") if ($VERBOSE);
 		}
 	}
-	if ($jsonvalid == 0)
+
+	if (!$jsonvalid)
 	{
 		my $url = "https://fvau-api-prod.switch.tv/content/v1/epgs/".$dvb_triplet."?start=".$startTime."&end=".$stopTime."&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
 		my $res = $ua->get($url);
 		die("Unable to connect to FreeView.\n") if (!$res->is_success);
 		my $responsecode = $res->code();
+		warn("Freeview response code is $responsecode") if ($DEBUG);
 		if ($responsecode == 204) {
 			$data = "{}";
 		}
 		else {
 			$data = $res->content;
-			$fvthrdret{$hash} = $data;
+			$fvthrdret{$hash} = $data;			
 		}
 		print "+" if ($VERBOSE);
 	}
@@ -1045,9 +1047,9 @@ sub getFVShowIcon
 	open (STDERR, ">>&=", $fh)         || die "can't redirect STDERR";
 	$fh->autoflush(1);
 	print $fh "$data\n";
-	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 	close $fh;
 	open (STDERR, '>&', $STDOLD);
+	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 	$tmpchanneldata = $tmpchanneldata->{data};
 	if (defined($tmpchanneldata))
 	{
