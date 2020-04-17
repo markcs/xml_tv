@@ -57,16 +57,17 @@ my $CACHETIME = 86400; # 1 day - don't change this unless you know what you are 
 my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
 my $ua;
 my $DUPES_COUNT = 0;
-
+my $STDOLD;
 my (%dbm_hash, %thrdret);
 my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
-my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $REGION, $outputfile, $message, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef ,undef, undef);
+my ($DEBUG, $VERBOSE, $logdir, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $REGION, $outputfile, $message, $help) = (0, 0, undef, 0, 0, 7, undef, undef, undef, undef, undef ,undef, undef);
 GetOptions
 (
 	'debug'		=> \$DEBUG,
 	'verbose'	=> \$VERBOSE,
+	'logdir=s'	=> \$logdir,
 	'pretty'	=> \$pretty,
 	'days=i'	=> \$NUMDAYS,
 	'region=s'	=> \$REGION,
@@ -155,7 +156,6 @@ $SBSRADIO{"307"}{name}  = "SBS PopAsia";
 $SBSRADIO{"307"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popasia_300_colour.png";
 $SBSRADIO{"307"}{servicename}   = "popasia";
 
-
 get_duplicate_channels(@dupes) if (@dupes and scalar @dupes);
 
 if ($FURL_OK)
@@ -192,6 +192,15 @@ die(	  "\n"
 	. join("\n\t\t", (map { "$_->{id}\t=\t$_->{name}" } @REGIONS) )
 	. "\n\n"
    ) if (!$validregion); # (!defined($REGIONS->{$REGION}));
+
+if (defined($logdir))
+{
+    $logdir =~ s/\/?$/\//;
+	my $logfile = $logdir.$REGION.".log"; 
+	open (my $LOG, '>', $logfile)  || die "can't open $logfile.  Does $logdir exist?";
+	open (STDERR, ">>&=", $LOG)         || die "can't redirect STDERR";
+	select $LOG;
+}
 
 warn("Options...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $USEFREEVIEWICONS, Verbose = $VERBOSE, pretty = $pretty, \n\n") if ($VERBOSE);
 
@@ -342,6 +351,7 @@ if (!defined $outputfile)
 	close FILE;
 	warn("Done!\n") if ($VERBOSE);
 }
+
 exit(0);
 
 sub close_cache_and_die
@@ -1039,16 +1049,9 @@ sub getFVShowIcon
 		}
 		print "+" if ($VERBOSE);
 	}
+	print "\n-------------------------\ngetFVShowIcon\n$data\n" if ($DEBUG);
+
 	my $tmpchanneldata;
-	my $logfile = $outputfile =~ s/xml$/log/r;
-	
-	open (my $fh, '>', $logfile)  || die "can't open $logfile";
-	open (my $STDOLD, '>&', STDERR);
-	open (STDERR, ">>&=", $fh)         || die "can't redirect STDERR";
-	$fh->autoflush(1);
-	print $fh "$data\n";
-	close $fh;
-	open (STDERR, '>&', $STDOLD);
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 	$tmpchanneldata = $tmpchanneldata->{data};
 	if (defined($tmpchanneldata))
