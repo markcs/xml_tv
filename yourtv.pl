@@ -328,7 +328,7 @@ else {
 }
 
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
-$XML->xmlDecl("ISO-8859-1");
+$XML->xmlDecl("UTF-8");
 $XML->doctype("tv", undef, "xmltv.dtd");
 $XML->startTag('tv', 'source-info-name' => $message, 'generator-info-url' => "http://www.xmltv.org/");
 
