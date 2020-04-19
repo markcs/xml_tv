@@ -1007,7 +1007,8 @@ sub getFVShowIcon
 	my $jsonvalid = 0;
 	if (defined ($fvdbm_hash{$hash} ))
 	{
-		if (($fvdbm_hash{$hash} =~ /\{.*\:\{.*\:.*\}\}/g) && (valid_json ($fvdbm_hash{$hash})))
+		my $newlines = () = $fvdbm_hash{$hash} =~ /\Q[\n\r]/g;
+		if (($newlines == 0) && ($fvdbm_hash{$hash} =~ /\{.*\:\{.*\:.*\}\}/g) && (valid_json ($fvdbm_hash{$hash})))
 		{
 			$fvthrdret{$hash} = $fvdbm_hash{$hash};
 			$data = $fvdbm_hash{$hash};
@@ -1016,12 +1017,14 @@ sub getFVShowIcon
 		else 
 		{
 			undef $fvdbm_hash{$hash};
-			warn("JSON data invalid for $hash\n") if ($VERBOSE);
+			warn("JSON data invalid for $hash (lines = $newlines)\n") if ($VERBOSE);
 		}
 	}
 	elsif (defined($fvthrdret{$hash}))
 	{
-		if (($fvthrdret{$hash} =~ /\{.*\:\{.*\:.*\}\}/g) && (valid_json ($fvthrdret{$hash})))
+		my $newlines = () = $fvthrdret{$hash} =~ /\Q[\n\r]/g;
+		print "There are $newlines newlines in fvthrdret\n";		
+		if (($newlines == 0) && ($fvthrdret{$hash} =~ /\{.*\:\{.*\:.*\}\}/g) && (valid_json ($fvthrdret{$hash})))
 		{
 			$data = $fvthrdret{$hash};
 			$jsonvalid = 1;
@@ -1029,7 +1032,7 @@ sub getFVShowIcon
 		else
 		{
 			undef $fvthrdret{$hash};
-			warn("JSON data invalid for $hash\n") if ($VERBOSE);
+			warn("JSON data invalid for $hash (lines = $newlines)\n") if ($VERBOSE);
 		}
 	}
 
