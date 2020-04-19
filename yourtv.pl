@@ -1007,7 +1007,7 @@ sub getFVShowIcon
 	my $jsonvalid = 0;
 	if (defined ($fvdbm_hash{$hash} ))
 	{
-		if (valid_json ($fvdbm_hash{$hash}))
+		if (($fvdbm_hash{$hash} =~ /\{.*\:\{.*\:.*\}\}/g) && (valid_json ($fvdbm_hash{$hash})))
 		{
 			$fvthrdret{$hash} = $fvdbm_hash{$hash};
 			$data = $fvdbm_hash{$hash};
@@ -1021,7 +1021,7 @@ sub getFVShowIcon
 	}
 	elsif (defined($fvthrdret{$hash}))
 	{
-		if (valid_json ($fvthrdret{$hash}))
+		if (($fvthrdret{$hash} =~ /\{.*\:\{.*\:.*\}\}/g) && (valid_json ($fvthrdret{$hash})))
 		{
 			$data = $fvthrdret{$hash};
 			$jsonvalid = 1;
