@@ -62,12 +62,12 @@ my (%dbm_hash, %thrdret);
 my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
-my ($DEBUG, $VERBOSE, $logdir, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $REGION, $outputfile, $message, $help) = (0, 0, undef, 0, 0, 7, undef, undef, undef, undef, undef ,undef, undef);
+my ($DEBUG, $VERBOSE, $log, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $REGION, $outputfile, $message, $help) = (0, 0, undef, 0, 0, 7, undef, undef, undef, undef, undef ,undef, undef);
 GetOptions
 (
 	'debug'		=> \$DEBUG,
 	'verbose'	=> \$VERBOSE,
-	'logdir=s'	=> \$logdir,
+	'log=s'	=> \$log,
 	'pretty'	=> \$pretty,
 	'days=i'	=> \$NUMDAYS,
 	'region=s'	=> \$REGION,
@@ -193,11 +193,19 @@ die(	  "\n"
 	. "\n\n"
    ) if (!$validregion); # (!defined($REGIONS->{$REGION}));
 
-if (defined($logdir))
+if (defined($log))
 {
-    $logdir =~ s/\/?$/\//;
-	my $logfile = $logdir.$REGION.".log"; 
-	open (my $LOG, '>', $logfile)  || die "can't open $logfile.  Does $logdir exist?";
+    my $logfile;
+	$log =~ s/\/$//;
+	if (-d $log) 
+	{
+		$logfile = $log.'/'.$REGION.".log"; 
+	}
+	else 
+	{
+		$logfile = $log;
+	}  
+	open (my $LOG, '>', $logfile)  || die "can't open $logfile.  Does $logfile exist?";
 	open (STDERR, ">>&=", $LOG)         || die "can't redirect STDERR";
 	select $LOG;
 }
