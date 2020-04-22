@@ -436,7 +436,7 @@ sub getchannels
 	my $res = $ua->get($url);
 	warn("Getting channel list from YourTV ... ( $url )\n") if ($VERBOSE);
 	my $tmpchanneldata;
-	die("Unable to connect to FreeView.\n") if (!$res->is_success);
+	die("Unable to connect to FreeView. (getchannels)\n") if (!$res->is_success);
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 	my $dupe_count = 0;
 	my $channelcount = 0;
@@ -956,7 +956,7 @@ sub getTimeOffset
 sub buildregions {
 	my $url = "https://www.yourtv.com.au/guide/";
 	my $res = $ua->get($url);
-	die("Unable to connect to FreeView.\n") if (!$res->is_success);
+	die("Unable to connect to FreeView (buildregions).\n") if (!$res->is_success);
 	my $data = $res->content;
 	$data =~ s/\R//g;
 	$data =~ s/.*window.regionState\s+=\s+(\[.*\]);.*/$1/;
@@ -1031,7 +1031,6 @@ sub getFVShowIcon
 	elsif (defined($fvthrdret{$hash}))
 	{
 		my $newlines = () = $fvthrdret{$hash} =~ /\Q[\n\r]/g;
-		print "There are $newlines newlines in fvthrdret\n";		
 		if (($newlines == 0) && ($fvthrdret{$hash} =~ /\{.*\:\{.*\:.*\}\}/g) && (valid_json ($fvthrdret{$hash})))
 		{
 			$data = $fvthrdret{$hash};
@@ -1048,7 +1047,7 @@ sub getFVShowIcon
 	{
 		my $url = "https://fvau-api-prod.switch.tv/content/v1/epgs/".$dvb_triplet."?start=".$startTime."&end=".$stopTime."&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
 		my $res = $ua->get($url);
-		die("Unable to connect to FreeView.\n") if (!$res->is_success);
+		die("Unable to connect to FreeView (getFVShowIcon).\n") if (!$res->is_success);
 		my $responsecode = $res->code();
 		warn("Freeview response code is $responsecode") if ($DEBUG);
 		if ($responsecode == 204) {
@@ -1135,7 +1134,7 @@ sub getFVInfo
 				. "?limit=100&offset=0&include_related=1&expand_related=full&related_entity_types=images";
 			my $res = $ua->get($url);
 
-			die("Unable to connect to FreeView.\n") if (!$res->is_success);
+			die("Unable to connect to FreeView (fvregion).\n") if (!$res->is_success);
 			$data = $res->content;
 			$fvthrdret{$fvregion} = $data;
 		}
@@ -1189,6 +1188,8 @@ sub usage
 		. "\t--extrachannels <region>-<ch1>,<ch2>\tThis will fetch EPG data for the channels specified from one other region.\n"
 		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
 		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
+		. "\t--debug\t\t\t\tOnly used for debugging purposes.\n"
+		. "\t--log <directory or filename>.\tThis can either be a directory path or a complete filename to store verbose or debug log output\n"
 		. "\t--help\t\t\t\tWill print this usage and exit!\n"
 		. "\t  <region> is one of the following:\n\t\t"
 		. join("\n\t\t", (map { "$_->{id}\t=\t$_->{name}" } @REGIONS) )
