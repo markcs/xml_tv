@@ -180,6 +180,11 @@ $CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE eq "yourtv.db");
 
 my $validregion = 0;
 my @REGIONS = buildregions();
+#temporary disable non FTA TV channels
+if (($REGION eq '284') or ($REGION eq '192') or ($REGION eq '371') or ($REGION eq '168') or ($REGION eq '284'))
+{
+	die("\nSorry, only FTA channels are supported at this time\n\n");
+}
 for my $tmpregion ( @REGIONS )
 {
 	if ($tmpregion->{id} eq $REGION) {
