@@ -21,6 +21,7 @@ if (!$FURL_OK)
 }
 
 use JSON;
+use JSON::Parse 'valid_json';
 use XML::Simple;
 use DateTime;
 use Getopt::Long;
@@ -56,16 +57,17 @@ my $CACHETIME = 86400; # 1 day - don't change this unless you know what you are 
 my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
 my $ua;
 my $DUPES_COUNT = 0;
-
+my $STDOLD;
 my (%dbm_hash, %thrdret);
 my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
-my ($DEBUG, $VERBOSE, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $REGION, $outputfile, $message, $help) = (0, 0, 0, 0, 7, undef, undef, undef, undef, undef ,undef, undef);
+my ($DEBUG, $VERBOSE, $log, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $paytv, $REGION, $outputfile, $message, $help) = (0, 0, undef, 0, 0, 7, undef, undef, undef, undef, undef, undef ,undef, undef);
 GetOptions
 (
 	'debug'		=> \$DEBUG,
 	'verbose'	=> \$VERBOSE,
+	'log=s'	=> \$log,
 	'pretty'	=> \$pretty,
 	'days=i'	=> \$NUMDAYS,
 	'region=s'	=> \$REGION,
@@ -77,6 +79,7 @@ GetOptions
 	'fvcachefile=s'	=> \$FVCACHEFILE,
 	'cachetime=i'	=> \$CACHETIME,
 	'extrachannels=s'	=> \$extrachannels,
+	'paytv=s' => \$paytv,
 	'duplicates=s'	=> \@dupes,
 	'message=s'	=> \$message,
 	'help|?'	=> \$help,
@@ -154,7 +157,6 @@ $SBSRADIO{"307"}{name}  = "SBS PopAsia";
 $SBSRADIO{"307"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popasia_300_colour.png";
 $SBSRADIO{"307"}{servicename}   = "popasia";
 
-
 get_duplicate_channels(@dupes) if (@dupes and scalar @dupes);
 
 if ($FURL_OK)
@@ -181,7 +183,18 @@ my $validregion = 0;
 my @REGIONS = buildregions();
 for my $tmpregion ( @REGIONS )
 {
-	if ($tmpregion->{id} eq $REGION) {
+	if (($tmpregion->{id} eq $REGION) and ($tmpregion->{type} ne "FTA"))
+	{
+		die("\n"
+			. "--region option should be an FTA region\n"
+			. "For PayTV, please use both --region option and --paytv option\n"
+			. "\n\n");
+	}
+}
+for my $tmpregion ( @REGIONS )
+{
+	if ($tmpregion->{id} eq $REGION) 
+	{
         $validregion = 1;
 		define_ABC_local_radio($tmpregion->{state});
 	}
@@ -191,6 +204,23 @@ die(	  "\n"
 	. join("\n\t\t", (map { "$_->{id}\t=\t$_->{name}" } @REGIONS) )
 	. "\n\n"
    ) if (!$validregion); # (!defined($REGIONS->{$REGION}));
+
+if (defined($log))
+{
+    my $logfile;
+	$log =~ s/\/$//;
+	if (-d $log) 
+	{
+		$logfile = $log.'/'.$REGION.".log"; 
+	}
+	else 
+	{
+		$logfile = $log;
+	}  
+	open (my $LOG, '>', $logfile)  || die "can't open $logfile.  Does $logfile exist?";
+	open (STDERR, ">>&=", $LOG)         || die "can't redirect STDERR";
+	select $LOG;
+}
 
 warn("Options...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $USEFREEVIEWICONS, Verbose = $VERBOSE, pretty = $pretty, \n\n") if ($VERBOSE);
 
@@ -289,6 +319,34 @@ if (defined ($extrachannels))
 	push(@CHANNELDATA,getchannels($ua, $extraregion, @channel_array));
 	push(@GUIDEDATA,getepg($ua, $extraregion, @channel_array));
 }
+if (defined ($paytv))
+{	
+	my $count = 0;
+	my $region_timezone;
+	my $region_state;
+	my $region_name;
+
+	for my $tmpregion ( @REGIONS )
+	{
+		if ($tmpregion->{id} eq $REGION) {
+        	$region_timezone = $tmpregion->{timezone};
+    	    $region_name = $tmpregion->{name};
+			$region_state = $tmpregion->{state};
+		}
+	}
+	for my $tmpregion ( @REGIONS ) 
+	{
+		if ($tmpregion->{id} eq $paytv)
+		{
+			$REGIONS[$count]->{state} = $region_state;
+			$REGIONS[$count]->{name} = $region_name;
+			$REGIONS[$count]->{timezone} = $region_timezone;
+		}
+		$count++;
+	} 
+	push(@CHANNELDATA,getchannels($ua, $paytv));
+	push(@GUIDEDATA,getepg($ua, $paytv));
+}
 warn("Closing Queues...\n") if ($VERBOSE);
 # this will close the queues
 $INQ->end();
@@ -318,7 +376,7 @@ else {
 }
 
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
-$XML->xmlDecl("ISO-8859-1");
+$XML->xmlDecl("UTF-8");
 $XML->doctype("tv", undef, "xmltv.dtd");
 $XML->startTag('tv', 'source-info-name' => $message, 'generator-info-url' => "http://www.xmltv.org/");
 
@@ -341,6 +399,7 @@ if (!defined $outputfile)
 	close FILE;
 	warn("Done!\n") if ($VERBOSE);
 }
+
 exit(0);
 
 sub close_cache_and_die
@@ -417,7 +476,7 @@ sub getchannels
 	my $res = $ua->get($url);
 	warn("Getting channel list from YourTV ... ( $url )\n") if ($VERBOSE);
 	my $tmpchanneldata;
-	die("Unable to connect to FreeView.\n") if (!$res->is_success);
+	die("Unable to connect to YourTV. (getchannels)\n") if (!$res->is_success);
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 	my $dupe_count = 0;
 	my $channelcount = 0;
@@ -505,269 +564,292 @@ sub getepg
 			$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 			1;
 		};
-		my $chandata = $tmpdata->[0]->{channels};
-		if (defined($chandata))
+		for (my $channelblocks = 0; $channelblocks < @$tmpdata; $channelblocks++)
 		{
-			for (my $channelcount = 0; $channelcount < @$chandata; $channelcount++)
+			my $chandata = $tmpdata->[$channelblocks]->{channels};
+			if (defined($chandata))
 			{
-				next if (!defined($chandata->[$channelcount]->{number}));
-				next if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @IGNORECHANNELS ) ) );
-				next if ( ( !( grep( /^$chandata->[$channelcount]->{number}$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
-				next if ( ( !( grep( /^$chandata->[$channelcount]->{number}$/, @extrachannels ) ) ) and ((@extrachannels > 0)));
-				#if (defined($extrachannel))
-				#{
-				#	next if ($chandata->[$channelcount]->{number} ne $extrachannel);
-				#}
-				my $channelIsDuped = 0;
-				$channelIsDuped = $chandata->[$channelcount]->{number} if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @DUPLICATED_CHANNELS ) ) );
-
-				my $enqueued = 0;
-				$id = $chandata->[$channelcount]->{number}.".yourtv.com.au";
-				my $blocks = $chandata->[$channelcount]->{blocks};
-				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
+				for (my $channelcount = 0; $channelcount < @$chandata; $channelcount++)
 				{
-					my $subblocks = $blocks->[$blockcount]->{shows};
-					for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
+					next if (!defined($chandata->[$channelcount]->{number}));
+					next if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @IGNORECHANNELS ) ) );
+					next if ( ( !( grep( /^$chandata->[$channelcount]->{number}$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
+					next if ( ( !( grep( /^$chandata->[$channelcount]->{number}$/, @extrachannels ) ) ) and ((@extrachannels > 0)));
+					#if (defined($extrachannel))
+					#{
+					#	next if ($chandata->[$channelcount]->{number} ne $extrachannel);
+					#}
+					my $channelIsDuped = 0;
+					$channelIsDuped = $chandata->[$channelcount]->{number} if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @DUPLICATED_CHANNELS ) ) );
+
+					my $enqueued = 0;
+					$id = $chandata->[$channelcount]->{number}.".yourtv.com.au";
+					my $blocks = $chandata->[$channelcount]->{blocks};
+					for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
 					{
-						warn("Starting... ($blockcount < " . scalar @$blocks . "| $airingcount < " . scalar @$subblocks . ")\n") if ($DEBUG);
-						my $airing = $subblocks->[$airingcount]->{id};
-						warn("Starting $airing...\n") if ($DEBUG);
-						# We don't use the cache for 'today' incase of any last minute programming changes
-						#
-						# but if cachetime is set, work out if we use the cache or not. (Advanced users only)
-						if (!exists $dbm_hash{$airing} || $dbm_hash{$airing} eq "$airing|undef")
+						my $subblocks = $blocks->[$blockcount]->{shows};
+						for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
 						{
-							warn("No cache data for $airing, requesting...\n") if ($DEBUG);
-							$INQ->enqueue($airing);
-							++$enqueued; # Keep track of how many fetches we do
-						} else {
-							my $usecache = 1; # default is to use the cache
-							$usecache = 0 if ($CACHETIME eq 86400 && ($day eq "today" || $day eq "tomorrow")); # anything today is not cached if default cachetime
-							if ($usecache && $CACHETIME ne 86400)
+							warn("Starting... ($blockcount < " . scalar @$blocks . "| $airingcount < " . scalar @$subblocks . ")\n") if ($DEBUG);
+							my $airing = $subblocks->[$airingcount]->{id};
+							warn("Starting $airing...\n") if ($DEBUG);
+							# We don't use the cache for 'today' incase of any last minute programming changes
+							#
+							# but if cachetime is set, work out if we use the cache or not. (Advanced users only)
+							if (!exists $dbm_hash{$airing} || $dbm_hash{$airing} eq "$airing|undef")
 							{
-								if ($day eq "today" || $day eq "tomorrow")
-								{
-									# CACHETIME is non default so more complicated
-									# so we just need to know if the airing is within our cachetime
-									# however at this level the aring has just things like "5:30 AM" or "6:00 PM"
-									# so we need to do some conversions
-									my $offset = getTimeOffset($region_timezone, $subblocks->[$airingcount]->{date}, $day);
-									warn("Checking $offset against $CACHETIME\n") if ($DEBUG);
-									$usecache = 0 if (abs($offset) eq $offset && $CACHETIME > $offset);
-								}
-							}
-							if (!$usecache)
-							{
-								warn("Cache Data is within the last $CACHETIME seconds, ignoring cache data for $airing, requesting...[" . $subblocks->[$airingcount]->{date} . "]\n") if ($DEBUG);
+								warn("No cache data for $airing, requesting...\n") if ($DEBUG);
 								$INQ->enqueue($airing);
 								++$enqueued; # Keep track of how many fetches we do
-							} else {
-								# we can use the cache...
-								warn("Using cache for $airing.\n") if ($DEBUG && $day eq "today");
-								my $data = $dbm_hash{$airing};
-								warn("Got cache data for $airing.\n") if ($DEBUG);
-								$thrdret{$airing} = $data;
-								warn("Wrote cache data for $airing.\n") if ($DEBUG);
+							} 
+							else 
+							{
+								my $usecache = 1; # default is to use the cache
+								$usecache = 0 if ($CACHETIME eq 86400 && ($day eq "today" || $day eq "tomorrow")); # anything today is not cached if default cachetime
+								if ($usecache && $CACHETIME ne 86400)
+								{
+									if ($day eq "today" || $day eq "tomorrow")
+									{
+										# CACHETIME is non default so more complicated
+										# so we just need to know if the airing is within our cachetime
+										# however at this level the aring has just things like "5:30 AM" or "6:00 PM"
+										# so we need to do some conversions
+										my $offset = getTimeOffset($region_timezone, $subblocks->[$airingcount]->{date}, $day);
+										warn("Checking $offset against $CACHETIME\n") if ($DEBUG);
+										$usecache = 0 if (abs($offset) eq $offset && $CACHETIME > $offset);
+									}
+								}
+								if (!$usecache)
+								{
+									warn("Cache Data is within the last $CACHETIME seconds, ignoring cache data for $airing, requesting...[" . $subblocks->[$airingcount]->{date} . "]\n") if ($DEBUG);
+									$INQ->enqueue($airing);
+									++$enqueued; # Keep track of how many fetches we do
+								} 
+								else 
+								{
+									# we can use the cache...
+									warn("Using cache for $airing.\n") if ($DEBUG && $day eq "today");
+									my $data = $dbm_hash{$airing};
+									warn("Got cache data for $airing.\n") if ($DEBUG);
+									$thrdret{$airing} = $data;
+									warn("Wrote cache data for $airing.\n") if ($DEBUG);
+								}
 							}
+							warn("Done $airing...\n") if ($DEBUG);
 						}
-						warn("Done $airing...\n") if ($DEBUG);
 					}
-				}
-				for (my $l = 0;$l < $enqueued; ++$l)
-				{
-					# At this point all the threads should have all the URLs in the queue and
-					# will resolve them independently - this means they will not necessarily
-					# be in the right order when we get them back.  That said, because we will
-					# reuse these threads and queues on each loop we wait here to get back
-					# all the results before we continue.
-					my ($airing, $result) = split(/\|/, $OUTQ->dequeue(), 2);
-					warn("$airing = $result\n") if ($DEBUG);
-					$thrdret{$airing} = $result;
-				}
-				if ($VERBOSE && $enqueued)
-				{
-					local $| = 1;
-					print " ";
-					$nl++;
-				}
-				for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
-				{
-					my $subblocks = $blocks->[$blockcount]->{shows};
-					#for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
-					#{
-					#	my ($airing, $result) = split(/\|/, $OUTQ->dequeue(), 2);
-					#	warn("$airing = $result\n") if ($DEBUG);
-					#	$thrdret{$airing} = $result;
-					#}
-					# Here we will have all the returned data in the hash %thrdret with the
-					# url as the key.
-					for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
+					for (my $l = 0;$l < $enqueued; ++$l)
 					{
-						my $showdata;
-						my $airing = $subblocks->[$airingcount]->{id};
-						if ($thrdret{$airing} eq "FAILED")
+						# At this point all the threads should have all the URLs in the queue and
+						# will resolve them independently - this means they will not necessarily
+						# be in the right order when we get them back.  That said, because we will
+						# reuse these threads and queues on each loop we wait here to get back
+						# all the results before we continue.
+						my ($airing, $result) = split(/\|/, $OUTQ->dequeue(), 2);
+						warn("$airing = $result\n") if ($DEBUG);
+						$thrdret{$airing} = $result;
+					}
+					if ($VERBOSE && $enqueued)
+					{
+						local $| = 1;
+						print " ";
+						$nl++;
+					}
+					for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
+					{
+						my $subblocks = $blocks->[$blockcount]->{shows};
+						#for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
+						#{
+						#	my ($airing, $result) = split(/\|/, $OUTQ->dequeue(), 2);
+						#	warn("$airing = $result\n") if ($DEBUG);
+						#	$thrdret{$airing} = $result;
+						#}
+						# Here we will have all the returned data in the hash %thrdret with the
+						# url as the key.
+						for (my $airingcount = 0; $airingcount < @$subblocks; $airingcount++)
 						{
-							warn("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... skipping\n");
-							next;
-						} elsif ($thrdret{$airing} eq "ERROR") {
-							die("FATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (error code >= 500 have you need banned?)\n");
-						} elsif ($thrdret{$airing} eq "UNKNOWN") {
-							die("FATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (Unknown Error!)\n");
-						}
-						eval
-						{
-							$showdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($thrdret{$airing});
-							1;
-						};
-						if (defined($showdata))
-						{
-							$guidedata[$showcount]->{id} = $id;
-							$guidedata[$showcount]->{airing_tmp} = $airing;
-							$guidedata[$showcount]->{desc} = $showdata->{synopsis};
-							$guidedata[$showcount]->{subtitle} = $showdata->{episodeTitle};
-							$guidedata[$showcount]->{start} = toLocalTimeString($showdata->{date},$region_timezone);
-							$guidedata[$showcount]->{stop} = addTime($showdata->{duration},$guidedata[$showcount]->{start});
-							$guidedata[$showcount]->{start} =~ s/[-T:]//g;
-							$guidedata[$showcount]->{start} =~ s/\+/ \+/g;
-							$guidedata[$showcount]->{stop} =~ s/[-T:]//g;
-							$guidedata[$showcount]->{stop} =~ s/\+/ \+/g;
-							$guidedata[$showcount]->{channel} = $showdata->{service}->{description};
-							$guidedata[$showcount]->{title} = $showdata->{title};
-							$guidedata[$showcount]->{rating} = $showdata->{classification};
-							if (defined($showdata->{program}->{image}))
+							my $showdata;
+							my $airing = $subblocks->[$airingcount]->{id};
+							if ($thrdret{$airing} eq "FAILED")
 							{
-								$guidedata[$showcount]->{url} = $showdata->{program}->{image};
-							}
-							else
+								warn("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... skipping\n");
+								next;
+							} 
+							elsif ($thrdret{$airing} eq "ERROR")
 							{
-								$guidedata[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$guidedata[$showcount]->{title},$guidedata[$showcount]->{start},$guidedata[$showcount]->{stop});
+								die("FATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (error code >= 500 have you need banned?)\n");
+							} 
+							elsif ($thrdret{$airing} eq "UNKNOWN") 
+							{
+								die("FATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (Unknown Error!)\n");
 							}
-							push(@{$guidedata[$showcount]->{category}}, $showdata->{genre}->{name});
-							push(@{$guidedata[$showcount]->{category}}, $showdata->{subGenre}->{name}) if (defined($showdata->{subGenre}->{name}));
-							#	program types as defined by yourtv $showdata->{programType}->{id}
-							#	1	 Television movie
-							#	2	 Cinema movie
-							#	3	 Mini series
-							#	4	 Series no episodes
-							#	5	 Series with episodes
-							#   6    Serial
-							#	8	 Limited series
-							#	9	 Special
-							my $tmpseries = toLocalTimeString($showdata->{date},$region_timezone);
-							my ($episodeYear, $episodeMonth, $episodeDay, $episodeHour, $episodeMinute) = $tmpseries =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/;#S$1E$2$3$4$5/;
+							eval
+							{
+								$showdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($thrdret{$airing});
+								1;
+							};
+							if (defined($showdata))
+							{
+								$guidedata[$showcount]->{id} = $id;
+								$guidedata[$showcount]->{airing_tmp} = $airing;
+								$guidedata[$showcount]->{desc} = $showdata->{synopsis};
+								$guidedata[$showcount]->{subtitle} = $showdata->{episodeTitle};
+								$guidedata[$showcount]->{start} = toLocalTimeString($showdata->{date},$region_timezone);
+								$guidedata[$showcount]->{stop} = addTime($showdata->{duration},$guidedata[$showcount]->{start});
+								$guidedata[$showcount]->{start} =~ s/[-T:]//g;
+								$guidedata[$showcount]->{start} =~ s/\+/ \+/g;
+								$guidedata[$showcount]->{stop} =~ s/[-T:]//g;
+								$guidedata[$showcount]->{stop} =~ s/\+/ \+/g;
+								$guidedata[$showcount]->{channel} = $showdata->{service}->{description};
+								$guidedata[$showcount]->{title} = $showdata->{title};
+								$guidedata[$showcount]->{rating} = $showdata->{classification};
+								if (defined($showdata->{program}->{image}))
+								{
+									$guidedata[$showcount]->{url} = $showdata->{program}->{image};
+								}
+								else
+								{
+									$guidedata[$showcount]->{url} = getFVShowIcon($chandata->[$channelcount]->{number},$guidedata[$showcount]->{title},$guidedata[$showcount]->{start},$guidedata[$showcount]->{stop});
+								}
+								push(@{$guidedata[$showcount]->{category}}, $showdata->{genre}->{name});
+								push(@{$guidedata[$showcount]->{category}}, $showdata->{subGenre}->{name}) if (defined($showdata->{subGenre}->{name}));
+								#	program types as defined by yourtv $showdata->{programType}->{id}
+								#	1	 Television movie
+								#	2	 Cinema movie
+								#	3	 Mini series
+								#	4	 Series no episodes
+								#	5	 Series with episodes
+								#   6    Serial
+								#	8	 Limited series
+								#	9	 Special
+								my $tmpseries = toLocalTimeString($showdata->{date},$region_timezone);
+								my ($episodeYear, $episodeMonth, $episodeDay, $episodeHour, $episodeMinute) = $tmpseries =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+).*/;#S$1E$2$3$4$5/;
 
-							if (defined($showdata->{programType}->{id})) {
-								my $programtype = $showdata->{programType}->{id};
-								if ($programtype eq "1") {
-									push(@{$guidedata[$showcount]->{category}}, $showdata->{programType}->{name});
-								}
-								elsif ($programtype eq "2") {
-									push(@{$guidedata[$showcount]->{category}}, $showdata->{programType}->{name});
-								}
-								elsif ($programtype eq "3") {
-									push(@{$guidedata[$showcount]->{category}}, $showdata->{programType}->{name});
-									$guidedata[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
-									$guidedata[$showcount]->{season} = "1";
-								}
-								elsif ($programtype eq "4") {
-									$guidedata[$showcount]->{premiere} = "1";
-									$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
-									if (defined($showdata->{episodeNumber}))
+								if (defined($showdata->{programType}->{id})) 
+								{
+									my $programtype = $showdata->{programType}->{id};
+									if ($programtype eq "1") 
 									{
-										$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
+										push(@{$guidedata[$showcount]->{category}}, $showdata->{programType}->{name});
 									}
-									else
+									elsif ($programtype eq "2") 
 									{
-										$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+										push(@{$guidedata[$showcount]->{category}}, $showdata->{programType}->{name});
 									}
-									if (defined($showdata->{seriesNumber})) {
-										$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
+									elsif ($programtype eq "3") 
+									{
+										push(@{$guidedata[$showcount]->{category}}, $showdata->{programType}->{name});
+										$guidedata[$showcount]->{episode} = $showdata->{episodeNumber} if (defined($showdata->{episodeNumber}));
+										$guidedata[$showcount]->{season} = "1";
 									}
-									else
+									elsif ($programtype eq "4") 
+									{
+										$guidedata[$showcount]->{premiere} = "1";
+										$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
+										if (defined($showdata->{episodeNumber}))
+										{
+											$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
+										}
+										else
+										{
+											$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+										}
+										if (defined($showdata->{seriesNumber})) 
+										{
+											$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
+										}
+										else
+										{
+											$guidedata[$showcount]->{season} = $episodeYear;
+										}
+									}
+									elsif ($programtype eq "5")
+									{
+										if (defined($showdata->{seriesNumber})) 
+										{
+											$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
+										}
+										else
+										{
+											$guidedata[$showcount]->{season} = $episodeYear;
+										}
+										if (defined($showdata->{episodeNumber})) 
+										{
+											$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
+										}
+										else
+										{
+											$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+										}
+									}
+									elsif ($programtype eq "6")
+									{
+										if (defined($showdata->{seriesNumber})) 
+										{
+											$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
+										}
+										else
+										{
+											$guidedata[$showcount]->{season} = $episodeYear;
+										}
+										if (defined($showdata->{episodeNumber}))
+										{
+											$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
+										}
+										else
+										{
+											$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+										}
+									}
+									elsif ($programtype eq "8")
+									{
+										if (defined($showdata->{seriesNumber}))
+										{
+											$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
+										}
+										else
+										{
+											$guidedata[$showcount]->{season} = $episodeYear;
+										}
+										if (defined($showdata->{episodeNumber})) 
+										{
+											$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
+										}
+										else
+										{
+											$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+										}
+									}
+									elsif ($programtype eq "9")
 									{
 										$guidedata[$showcount]->{season} = $episodeYear;
-									}
-								}
-								elsif ($programtype eq "5")
-								{
-									if (defined($showdata->{seriesNumber})) {
-										$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
-									}
-									else
-									{
-										$guidedata[$showcount]->{season} = $episodeYear;
-									}
-									if (defined($showdata->{episodeNumber})) {
-										$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
-									}
-									else
-									{
 										$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
 									}
 								}
-								elsif ($programtype eq "6")
+								if (defined($showdata->{repeat} ) )
 								{
-									if (defined($showdata->{seriesNumber})) {
-										$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
-									}
-									else
+								#	$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
+									$guidedata[$showcount]->{previouslyshown} = 1; #"$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
+								}
+								if (defined($showdata->{program}->{imdbId} ) )
+								{
+									$guidedata[$showcount]->{imdb} = $showdata->{program}->{imdbId};
+								}
+								if ($channelIsDuped)
+								{
+									foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
 									{
-										$guidedata[$showcount]->{season} = $episodeYear;
-									}
-									if (defined($showdata->{episodeNumber})) {
-										$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
-									}
-									else
-									{
-										$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
+										next if ($DUPLICATE_CHANNELS{$dchan} ne $channelIsDuped);
+										my $did = $dchan . ".yourtv.com.au";
+										$DUPEGUIDEDATA[$DUPES_COUNT] = clone($guidedata[$showcount]);
+										$DUPEGUIDEDATA[$DUPES_COUNT]->{id} = $did;
+										$DUPEGUIDEDATA[$DUPES_COUNT]->{channel} = $did;
+										warn("Duplicated guide data for show entry $showcount -> $DUPES_COUNT ($guidedata[$showcount] -> $DUPEGUIDEDATA[$DUPES_COUNT]) ...\n") if ($DEBUG);
+										++$DUPES_COUNT;
 									}
 								}
-								elsif ($programtype eq "8")
-								{
-									if (defined($showdata->{seriesNumber})) {
-										$guidedata[$showcount]->{season} = $showdata->{seriesNumber};
-									}
-									else
-									{
-										$guidedata[$showcount]->{season} = $episodeYear;
-									}
-									if (defined($showdata->{episodeNumber})) {
-										$guidedata[$showcount]->{episode} = $showdata->{episodeNumber};
-									}
-									else
-									{
-										$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
-									}
-								}
-								elsif ($programtype eq "9")
-								{
-									$guidedata[$showcount]->{season} = $episodeYear;
-									$guidedata[$showcount]->{episode} = sprintf("%0.2d%0.2d",$episodeMonth,$episodeDay);
-								}
+								$showcount++;
 							}
-							if (defined($showdata->{repeat} ) )
-							{
-								$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
-								$guidedata[$showcount]->{previouslyshown} = "$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
-							}
-							if (defined($showdata->{program}->{imdbId} ) )
-							{
-								$guidedata[$showcount]->{imdb} = $showdata->{program}->{imdbId};
-							}
-							if ($channelIsDuped)
-							{
-								foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
-								{
-									next if ($DUPLICATE_CHANNELS{$dchan} ne $channelIsDuped);
-									my $did = $dchan . ".yourtv.com.au";
-									$DUPEGUIDEDATA[$DUPES_COUNT] = clone($guidedata[$showcount]);
-									$DUPEGUIDEDATA[$DUPES_COUNT]->{id} = $did;
-									$DUPEGUIDEDATA[$DUPES_COUNT]->{channel} = $did;
-									warn("Duplicated guide data for show entry $showcount -> $DUPES_COUNT ($guidedata[$showcount] -> $DUPEGUIDEDATA[$DUPES_COUNT]) ...\n") if ($DEBUG);
-									++$DUPES_COUNT;
-								}
-							}
-							$showcount++;
 						}
 					}
 				}
@@ -826,10 +908,10 @@ sub printepg
 		}
 		if (defined($items->{imdb}))
 		{
-			${$XMLRef}->dataElement('episode-num', "series/".$items->{imdb}, 'system' => 'imdb.com');
+			${$XMLRef}->dataElement('episode-num', "title/tt".$items->{imdb}, 'system' => 'imdb.com');
 		}
 		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
-		${$XMLRef}->emptyTag('previously-shown', 'start' => $items->{previouslyshown}) if (defined($items->{previouslyshown}));
+		${$XMLRef}->emptyTag('previously-shown') if (defined($items->{previouslyshown}));
 		if (defined($items->{rating}))
 		{
 			${$XMLRef}->startTag('rating');
@@ -937,7 +1019,7 @@ sub getTimeOffset
 sub buildregions {
 	my $url = "https://www.yourtv.com.au/guide/";
 	my $res = $ua->get($url);
-	die("Unable to connect to FreeView.\n") if (!$res->is_success);
+	die("Unable to connect to FreeView (buildregions).\n") if (!$res->is_success);
 	my $data = $res->content;
 	$data =~ s/\R//g;
 	$data =~ s/.*window.regionState\s+=\s+(\[.*\]);.*/$1/;
@@ -992,32 +1074,58 @@ sub getFVShowIcon
 	my $stopdt = $dt + DateTime::Duration->new( hours => 24 );
 	$stopTime = $stopdt->ymd('-') . 'T' . $stopdt->hms(':') . 'Z';
 	my $hash = "$dvb_triplet - $startTime";
-	my $data;
+	my $data = {};
+	my $jsonvalid = 0;
 	if (defined ($fvdbm_hash{$hash} ))
 	{
-		$fvthrdret{$hash} = $fvdbm_hash{$hash};
-		$data = $fvdbm_hash{$hash};
+		my $newlines = () = $fvdbm_hash{$hash} =~ /\Q[\n\r]/g;
+		if (($newlines == 0) && ($fvdbm_hash{$hash} =~ /\{.*\:\{.*\:.*\}\}/g) && (valid_json ($fvdbm_hash{$hash})))
+		{
+			$fvthrdret{$hash} = $fvdbm_hash{$hash};
+			$data = $fvdbm_hash{$hash};
+			$jsonvalid = 1;
+		}
+		else 
+		{
+			undef $fvdbm_hash{$hash};
+			warn("JSON data invalid for $hash (lines = $newlines)\n") if ($VERBOSE);
+		}
 	}
 	elsif (defined($fvthrdret{$hash}))
 	{
-		$data = $fvthrdret{$hash};
+		my $newlines = () = $fvthrdret{$hash} =~ /\Q[\n\r]/g;
+		if (($newlines == 0) && ($fvthrdret{$hash} =~ /\{.*\:\{.*\:.*\}\}/g) && (valid_json ($fvthrdret{$hash})))
+		{
+			$data = $fvthrdret{$hash};
+			$jsonvalid = 1;
+		}
+		else
+		{
+			undef $fvthrdret{$hash};
+			warn("JSON data invalid for $hash (lines = $newlines)\n") if ($VERBOSE);
+		}
 	}
-	else
+
+	if (!$jsonvalid)
 	{
 		my $url = "https://fvau-api-prod.switch.tv/content/v1/epgs/".$dvb_triplet."?start=".$startTime."&end=".$stopTime."&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
 		my $res = $ua->get($url);
-		die("Unable to connect to FreeView.\n") if (!$res->is_success);
+		die("Unable to connect to FreeView (getFVShowIcon).\n") if (!$res->is_success);
 		my $responsecode = $res->code();
+		warn("Freeview response code is $responsecode") if ($DEBUG);
 		if ($responsecode == 204) {
 			$data = "{}";
 		}
 		else {
 			$data = $res->content;
-			$fvthrdret{$hash} = $data;
+			$fvthrdret{$hash} = $data;			
 		}
 		print "+" if ($VERBOSE);
 	}
-	my $tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
+	print "\n-------------------------\ngetFVShowIcon\n$data\n" if ($DEBUG);
+
+	my $tmpchanneldata;
+	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 	$tmpchanneldata = $tmpchanneldata->{data};
 	if (defined($tmpchanneldata))
 	{
@@ -1037,7 +1145,6 @@ sub getFVShowIcon
 	}
    	return;
 }
-
 
 sub getFVInfo
 {
@@ -1090,7 +1197,7 @@ sub getFVInfo
 				. "?limit=100&offset=0&include_related=1&expand_related=full&related_entity_types=images";
 			my $res = $ua->get($url);
 
-			die("Unable to connect to FreeView.\n") if (!$res->is_success);
+			die("Unable to connect to FreeView (fvregion).\n") if (!$res->is_success);
 			$data = $res->content;
 			$fvthrdret{$fvregion} = $data;
 		}
@@ -1132,9 +1239,10 @@ sub usage
 {
 	@REGIONS = buildregions() if (!(@REGIONS));
 	return    "Usage:\n"
-		. "\t$0 --region=<region> [--output <filename>] [--days=<days to collect>] [--ignore=<channels to ignore>] [--include=<channels to include>] [--fvicons] [--pretty] [--VERBOSE] [--help|?]\n"
+		. "\t$0 --region=<region> [--output <filename>] [--days=<days to collect>] [--ignore=<channels to ignore>] [--include=<channels to include>] [--fvicons] [--pretty] [--paytv=<region number>] [--VERBOSE] [--log=<logfile name or directory>] [--help|?]\n"
 		. "\n\tWhere:\n\n"
 		. "\t--region=<region>\t\tThis defines which tv guide to parse. It is mandatory. Refer below for a list of regions.\n"
+		. "\t--paytv=<paytv region number>\tDefines the pay tv guide to parse. Optional.\n"
 		. "\t--days=<days to collect>\tThis defaults to 7 days and can be no more than 7.\n"
 		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
 		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
@@ -1144,6 +1252,8 @@ sub usage
 		. "\t--extrachannels <region>-<ch1>,<ch2>\tThis will fetch EPG data for the channels specified from one other region.\n"
 		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
 		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
+		. "\t--debug\t\t\t\tOnly used for debugging purposes.\n"
+		. "\t--log <directory or filename>.\tThis can either be a directory path or a complete filename to store verbose or debug log output\n"
 		. "\t--help\t\t\t\tWill print this usage and exit!\n"
 		. "\t  <region> is one of the following:\n\t\t"
 		. join("\n\t\t", (map { "$_->{id}\t=\t$_->{name}" } @REGIONS) )
@@ -1265,7 +1375,7 @@ sub ABCgetepg
                 }
 
         }
-        warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
+        warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
         return @tmpguidedata;
 }
 
@@ -1342,6 +1452,6 @@ sub SBSgetepg
                 }
 
         }
-        warn("Processed a totol of $showcount shows ...\n") if ($VERBOSE);
+        warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
         return @tmpguidedata;
 }
