@@ -10,7 +10,7 @@ if ($threading_ok)
         use threads::shared;
 }
 
-my $MAX_THREADS = 7;
+my $MAX_THREADS = 14;
 
 use IO::Socket::SSL;
 my $FURL_OK = eval 'use Furl; 1';
@@ -677,21 +677,21 @@ sub getepg
 							} 
 							elsif ($thrdret{$airing} eq "ERROR")
 							{
-								warn("\nFATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (error code >= 500 have you need banned?)\n");
+								warn("Retrying to connect to YourTV: https://www.yourtv.com.au/api/airings/$airing \n") if ($VERBOSE);
 								my $url = "https://www.yourtv.com.au/api/airings/".$airing;
-								my $retry = 0;
+								my $retry = 1;
 								my $success = 0;
-								while (($retry < 3) and (!$success)) 
+								while (($retry < 4) and (!$success)) 
 								{
 									my $res = $ua->get($url);
 									#warn("Try: Result code ".$res->code."\n");
 									if (!$res->is_success)
 									{
-										warn("\nTry $retry: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ...\n");
+										warn("Try $retry: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing (".$res->{code}.")\n") if ($VERBOSE);
 									}
 									else 
 									{
-										warn("\nTry $retry: Success for https://www.yourtv.com.au/api/airings/$airing ...\n");
+										warn("Try $retry: Success for https://www.yourtv.com.au/api/airings/$airing ...\n") if ($VERBOSE);
 										$thrdret{$airing} = $res->content;
 										$success = 1;
 									}
@@ -699,7 +699,7 @@ sub getepg
 								}
 								if (!$success)
 								{
-									die("\nFATAL: Can not connect to https://www.yourtv.com.au/api/airings/$airing\n");
+									die("\nFATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing (".$res->{code}.")\n");
 								}
 							} 
 							elsif ($thrdret{$airing} eq "UNKNOWN") 
