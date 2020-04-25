@@ -329,8 +329,8 @@ if (defined ($paytv))
 	for my $tmpregion ( @REGIONS )
 	{
 		if ($tmpregion->{id} eq $REGION) {
-        	$region_timezone = $tmpregion->{timezone};
-    	    $region_name = $tmpregion->{name};
+			$region_timezone = $tmpregion->{timezone};
+			$region_name = $tmpregion->{name};
 			$region_state = $tmpregion->{state};
 		}
 	}
@@ -672,12 +672,35 @@ sub getepg
 							my $airing = $subblocks->[$airingcount]->{id};
 							if ($thrdret{$airing} eq "FAILED")
 							{
-								warn("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... skipping\n");
+								warn("\nUnable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... skipping\n");
 								next;
 							} 
 							elsif ($thrdret{$airing} eq "ERROR")
 							{
-								die("FATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (error code >= 500 have you need banned?)\n");
+								warn("\nFATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (error code >= 500 have you need banned?)\n");
+								my $url = "https://www.yourtv.com.au/api/airings/".$airing;
+								my $retry = 0;
+								my $success = 0;
+								while (($retry < 3) and (!$success)) 
+								{
+									my $res = $ua->get($url);
+									#warn("Try: Result code ".$res->code."\n");
+									if (!$res->is_success)
+									{
+										warn("\nTry $retry: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ...\n");
+									}
+									else 
+									{
+										warn("\nTry $retry: Success for https://www.yourtv.com.au/api/airings/$airing ...\n");
+										$thrdret{$airing} = $res->content;
+										$success = 1;
+									}
+									$retry++;
+								}
+								if (!$success)
+								{
+									die("\nFATAL: Can not connect to https://www.yourtv.com.au/api/airings/$airing\n");
+								}
 							} 
 							elsif ($thrdret{$airing} eq "UNKNOWN") 
 							{
