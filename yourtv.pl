@@ -10,7 +10,7 @@ if ($threading_ok)
         use threads::shared;
 }
 
-my $MAX_THREADS = 14;
+my $MAX_THREADS = 7;
 
 use IO::Socket::SSL;
 my $FURL_OK = eval 'use Furl; 1';
