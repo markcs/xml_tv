@@ -159,6 +159,23 @@ $SBSRADIO{"307"}{servicename}   = "popasia";
 
 get_duplicate_channels(@dupes) if (@dupes and scalar @dupes);
 
+if (defined($log))
+{
+    my $logfile;
+	$log =~ s/\/$//;
+	if (-d $log) 
+	{
+		$logfile = $log.'/'.$REGION.".log"; 
+	}
+	else 
+	{
+		$logfile = $log;
+	}  
+	open (my $LOG, '>', $logfile)  || die "can't open $logfile.  Does $logfile exist?";
+	open (STDERR, ">>&=", $LOG)         || die "can't redirect STDERR";
+	select $LOG;
+}
+
 if ($FURL_OK)
 {
 	warn("Using Furl for fetching http:// and https:// requests.\n") if ($VERBOSE);
@@ -205,24 +222,13 @@ die(	  "\n"
 	. "\n\n"
    ) if (!$validregion); # (!defined($REGIONS->{$REGION}));
 
-if (defined($log))
-{
-    my $logfile;
-	$log =~ s/\/$//;
-	if (-d $log) 
-	{
-		$logfile = $log.'/'.$REGION.".log"; 
-	}
-	else 
-	{
-		$logfile = $log;
-	}  
-	open (my $LOG, '>', $logfile)  || die "can't open $logfile.  Does $logfile exist?";
-	open (STDERR, ">>&=", $LOG)         || die "can't redirect STDERR";
-	select $LOG;
-}
-
-warn("Options...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $USEFREEVIEWICONS, Verbose = $VERBOSE, pretty = $pretty, \n\n") if ($VERBOSE);
+warn("\nOptions...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $USEFREEVIEWICONS, Verbose = $VERBOSE, pretty = $pretty, \n") if ($VERBOSE);
+warn("extrachannels=$extrachannels, ") if ($VERBOSE and defined($extrachannels)) ;
+warn("paytv-region=$paytv,\n") if ($VERBOSE and defined($paytv));
+warn("message=$message,\n") if (defined($message) and ($VERBOSE));
+warn("cachefile=$CACHEFILE\n") if (defined($CACHEFILE) and ($VERBOSE));
+warn("fvcachefile=$FVCACHEFILE\n") if (defined($FVCACHEFILE) and ($VERBOSE));
+warn("log=$log\n") if (defined($log) and ($VERBOSE));
 
 # Initialise here (connections to the same server will be cached)
 my @IGNORECHANNELS;
@@ -230,11 +236,14 @@ my @IGNORECHANNELS;
 my @INCLUDECHANNELS;
 @INCLUDECHANNELS = split(/,/,$includechannels) if (defined($includechannels));
 
-warn("ignored channels: @IGNORECHANNELS \n\n") if ($VERBOSE);
+warn("Duplicate channels: @dupes \n") if ($VERBOSE);
+warn("Ignored channels: @IGNORECHANNELS \n") if ($VERBOSE);
+warn("Included channels: @IGNORECHANNELS \n") if ($VERBOSE);
+
 
 getFVInfo($ua);
 
-warn("Initializing queues...\n") if ($VERBOSE);
+warn("\nInitializing queues...\n") if ($VERBOSE);
 my $INQ = Thread::Queue->new();
 my $OUTQ = Thread::Queue->new();
 
@@ -310,7 +319,7 @@ push(@GUIDEDATA,getepg($ua, $REGION));
 push(@GUIDEDATA,ABCgetepg($ua));
 push(@GUIDEDATA,SBSgetepg($ua));
 
-warn("\nGetting extra channel and EPG data...\n\n") if ($VERBOSE);
+warn("Getting extra channel and EPG data...\n\n") if ($VERBOSE);
 if (defined ($extrachannels))
 {
 	die("--extrachannel option in wrong format. It should be <other region>-<channel number>,<channel number>,etc") if ($extrachannels !~ /(\d+)-.*/);
@@ -329,8 +338,8 @@ if (defined ($paytv))
 	for my $tmpregion ( @REGIONS )
 	{
 		if ($tmpregion->{id} eq $REGION) {
-        	$region_timezone = $tmpregion->{timezone};
-    	    $region_name = $tmpregion->{name};
+			$region_timezone = $tmpregion->{timezone};
+			$region_name = $tmpregion->{name};
 			$region_state = $tmpregion->{state};
 		}
 	}
@@ -404,6 +413,7 @@ exit(0);
 
 sub close_cache_and_die
 {
+	warn("Error. Script died\n");
 	warn($_[0]);
 	&close_cache;
 	unlink $TMPCACHEFILE;
@@ -449,7 +459,7 @@ sub url_fetch_thread
 		my $res = $tua->get($url);
 		if (!$res->is_success)
 		{
-			warn(threads->self()->tid(). ": Thread Fetch FAILED for: $url (" . $res->code . ")\n");
+			warn("\n".threads->self()->tid(). ": Thread Fetch FAILED for: $url (" . $res->code . ")\n") if ($VERBOSE);
 			if ($res->code > 399 and $res->code < 500)
 			{
 				$OUTQ->enqueue("$airingid|FAILED");
@@ -471,12 +481,14 @@ sub getchannels
 	#my $ua = shift;
 	my ($ua, $region, @extrachannels) = @_;
 	my @channeldata;
-	warn("Getting channel list from YourTV ...\n") if ($VERBOSE);
 	my $url = "https://www.yourtv.com.au/api/regions/" . $region . "/channels";
-	my $res = $ua->get($url);
-	warn("Getting channel list from YourTV ... ( $url )\n") if ($VERBOSE);
 	my $tmpchanneldata;
-	die("Unable to connect to YourTV. (getchannels)\n") if (!$res->is_success);
+	my $res = geturl($ua,$url);
+	if (!$res->is_success)
+	{
+		die("(getchannels) Unable to connect to YourTV.  (".$res->{code}.")\n");
+	}	
+	#die("Unable to connect to YourTV. (getchannels)\n") if (!$res->is_success);
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 	my $dupe_count = 0;
 	my $channelcount = 0;
@@ -545,7 +557,6 @@ sub getepg
     	    $region_name = $tmpregion->{name};
 		}
 	}
-
 	warn(" \n") if ($VERBOSE);
 	my $nl = 0;
 	for(my $day = 0; $day < $NUMDAYS; $day++)
@@ -554,10 +565,13 @@ sub getepg
 		my $id;
 		my $url = URI->new( 'https://www.yourtv.com.au/api/guide/' );
 		$url->query_form(day => $day, timezone => $region_timezone, format => 'json', region => $region);
-		warn(($nl ? "\n" : "" ) . "Getting channel program listing for $region_name ($region) for $day ($url)...\n") if ($VERBOSE);
+		warn(($nl ? "\n" : "" ) . "Getting channel program listing for $region_name ($region) for $day ...\n") if ($VERBOSE);
 		$nl = 0;
-		my $res = $ua->get($url);
-		die("Unable to connect to YourTV for $url.\n") if (!$res->is_success);
+		my $res = geturl($ua,$url);
+		if (!$res->is_success)
+		{
+			die("\n(getepg) FATAL: Unable to connect to YourTV for $url (".$res->{code}.")\n");
+		}
 		my $tmpdata;
 		eval
 		{
@@ -672,12 +686,21 @@ sub getepg
 							my $airing = $subblocks->[$airingcount]->{id};
 							if ($thrdret{$airing} eq "FAILED")
 							{
-								warn("Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... skipping\n");
+								warn("\nUnable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... skipping  (".$res->{code}.")\n");
 								next;
 							} 
 							elsif ($thrdret{$airing} eq "ERROR")
 							{
-								die("FATAL: Unable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... (error code >= 500 have you need banned?)\n");
+								my $url = "https://www.yourtv.com.au/api/airings/".$airing;
+								$res = geturl($ua,$url);
+								if (!$res->is_success)
+								{
+									die("(getchannels) Unable to connect to YourTV.  (".$res->{code}.")\n");
+								}
+								else 
+								{
+									$thrdret{$airing} = $res->content;
+								}
 							} 
 							elsif ($thrdret{$airing} eq "UNKNOWN") 
 							{
@@ -856,7 +879,7 @@ sub getepg
 			}
 		}
 	}
-	warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
+	warn("\nProcessed a total of $showcount shows ...\n") if ($VERBOSE);
 	return @guidedata;
 }
 
@@ -1018,7 +1041,7 @@ sub getTimeOffset
 
 sub buildregions {
 	my $url = "https://www.yourtv.com.au/guide/";
-	my $res = $ua->get($url);
+	my $res = geturl($ua,$url);
 	die("Unable to connect to FreeView (buildregions).\n") if (!$res->is_success);
 	my $data = $res->content;
 	$data =~ s/\R//g;
@@ -1109,7 +1132,7 @@ sub getFVShowIcon
 	if (!$jsonvalid)
 	{
 		my $url = "https://fvau-api-prod.switch.tv/content/v1/epgs/".$dvb_triplet."?start=".$startTime."&end=".$stopTime."&sort=start&related_entity_types=episodes.images,shows.images&related_levels=2&include_related=1&expand_related=full&limit=100&offset=0";
-		my $res = $ua->get($url);
+		my $res = geturl($ua,$url);
 		die("Unable to connect to FreeView (getFVShowIcon).\n") if (!$res->is_success);
 		my $responsecode = $res->code();
 		warn("Freeview response code is $responsecode") if ($DEBUG);
@@ -1195,8 +1218,7 @@ sub getFVInfo
 		{
 			my $url = "https://fvau-api-prod.switch.tv/content/v1/channels/region/" . $fvregion
 				. "?limit=100&offset=0&include_related=1&expand_related=full&related_entity_types=images";
-			my $res = $ua->get($url);
-
+			my $res = geturl($ua,$url);
 			die("Unable to connect to FreeView (fvregion).\n") if (!$res->is_success);
 			$data = $res->content;
 			$fvthrdret{$fvregion} = $data;
@@ -1312,7 +1334,7 @@ sub ABCgetepg
         my $ua = shift;
         my $showcount = 0;
         my @tmpguidedata;
-		warn("Getting epg for ABC Radio Stations ...\n") if ($VERBOSE);
+		warn("\nGetting epg for ABC Radio Stations ...\n") if ($VERBOSE);
         foreach my $key (keys %ABCRADIO)
         {
                 next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
@@ -1326,7 +1348,7 @@ sub ABCgetepg
                 my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
                 my $url = URI->new( 'https://program.abcradio.net.au/api/v1/programitems/search.json' );
                 $url->query_form(service => $ABCRADIO{$key}{servicename}, limit => '100', order => 'asc', order_by => 'ppe_date', from => $startdate, to => $enddate);
-                my $res = $ua->get($url);
+				my $res = geturl($ua,$url);
                 if (!$res->is_success)
 				{
 					warn("Unable to connect to ABC radio schedule: URL: $url. [" . $res->status_line . "]\n");
@@ -1401,7 +1423,7 @@ sub SBSgetepg
         my $ua = shift;
         my $showcount = 0;
         my @tmpguidedata;
-		warn("Getting epg for SBS Radio Stations ...\n") if ($VERBOSE);
+		warn("\nGetting epg for SBS Radio Stations ...\n") if ($VERBOSE);
         foreach my $key (keys %SBSRADIO)
         {
                 next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
@@ -1415,7 +1437,7 @@ sub SBSgetepg
                 my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
 
                 my $url = "http://two.aim-data.com/services/schedule/sbs/".$SBSRADIO{$key}{servicename}."?days=".$NUMDAYS;
-                my $res = $ua->get($url);
+				my $res = geturl($ua,$url);
                 if (!$res->is_success)
 				{
 					warn("Unable to connect to SBS radio schedule: URL: $url.. [" . $res->status_line . "]\n");
@@ -1454,4 +1476,29 @@ sub SBSgetepg
         }
         warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
         return @tmpguidedata;
+}
+
+sub geturl
+{
+	my ($ua,$url,$max_retries) = @_;
+	$max_retries = 3 if (!(defined($max_retries)));
+	my $res;
+	my $retry = 1;
+	my $success = 0;
+    my $calling_sub = (caller(1))[3];
+	while (($retry <= $max_retries) and (!$success)) 
+	{
+		$res = $ua->get($url);
+		if (!$res->is_success)
+		{
+			warn("($calling_sub) Try $retry: Unable to connect to $url (".$res->code.")\n") if ($VERBOSE);
+		}
+		else 
+		{
+			warn("($calling_sub) Try $retry: Success for $url...\n") if ((($VERBOSE) and ($retry > 1)) or ($DEBUG));
+			return $res;
+		}
+		$retry++;
+	}
+    return $res;
 }
