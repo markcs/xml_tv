@@ -222,7 +222,13 @@ die(	  "\n"
 	. "\n\n"
    ) if (!$validregion); # (!defined($REGIONS->{$REGION}));
 
-warn("Options...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $USEFREEVIEWICONS, Verbose = $VERBOSE, pretty = $pretty, \n\n") if ($VERBOSE);
+warn("\nOptions...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $USEFREEVIEWICONS, Verbose = $VERBOSE, pretty = $pretty, \n") if ($VERBOSE);
+warn("extrachannels=$extrachannels, ") if ($VERBOSE and defined($extrachannels)) ;
+warn("paytv-region=$paytv,\n") if ($VERBOSE and defined($paytv));
+warn("message=$message,\n") if (defined($message) and ($VERBOSE));
+warn("cachefile=$CACHEFILE\n") if (defined($CACHEFILE) and ($VERBOSE));
+warn("fvcachefile=$FVCACHEFILE\n") if (defined($FVCACHEFILE) and ($VERBOSE));
+warn("log=$log\n") if (defined($log) and ($VERBOSE));
 
 # Initialise here (connections to the same server will be cached)
 my @IGNORECHANNELS;
@@ -230,11 +236,14 @@ my @IGNORECHANNELS;
 my @INCLUDECHANNELS;
 @INCLUDECHANNELS = split(/,/,$includechannels) if (defined($includechannels));
 
-warn("ignored channels: @IGNORECHANNELS \n\n") if ($VERBOSE);
+warn("Duplicate channels: @dupes \n") if ($VERBOSE);
+warn("Ignored channels: @IGNORECHANNELS \n") if ($VERBOSE);
+warn("Included channels: @IGNORECHANNELS \n") if ($VERBOSE);
+
 
 getFVInfo($ua);
 
-warn("Initializing queues...\n") if ($VERBOSE);
+warn("\nInitializing queues...\n") if ($VERBOSE);
 my $INQ = Thread::Queue->new();
 my $OUTQ = Thread::Queue->new();
 
@@ -404,6 +413,7 @@ exit(0);
 
 sub close_cache_and_die
 {
+	warn("Error. Script died\n");
 	warn($_[0]);
 	&close_cache;
 	unlink $TMPCACHEFILE;
