@@ -62,27 +62,28 @@ my (%dbm_hash, %thrdret);
 my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
-my ($DEBUG, $VERBOSE, $log, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $paytv, $REGION, $outputfile, $message, $help) = (0, 0, undef, 0, 0, 7, undef, undef, undef, undef, undef, undef ,undef, undef);
+my ($DEBUG, $VERBOSE, $log, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $paytv, $hdtvchannels, $REGION, $outputfile, $message, $help) = (0, 0, undef, 0, 0, 7, undef, undef, undef, undef, 0, undef ,undef, undef, undef);
 GetOptions
 (
-	'debug'		=> \$DEBUG,
-	'verbose'	=> \$VERBOSE,
-	'log=s'	=> \$log,
-	'pretty'	=> \$pretty,
-	'days=i'	=> \$NUMDAYS,
-	'region=s'	=> \$REGION,
-	'output=s'	=> \$outputfile,
-	'ignore=s'	=> \$ignorechannels,
-	'include=s'	=> \$includechannels,
-	'fvicons'	=> \$USEFREEVIEWICONS,
-	'cachefile=s'	=> \$CACHEFILE,
-	'fvcachefile=s'	=> \$FVCACHEFILE,
-	'cachetime=i'	=> \$CACHETIME,
+	'debug'				=> \$DEBUG,
+	'verbose'			=> \$VERBOSE,
+	'log=s'				=> \$log,
+	'pretty'			=> \$pretty,
+	'days=i'			=> \$NUMDAYS,
+	'region=s'			=> \$REGION,
+	'output=s'			=> \$outputfile,
+	'ignore=s'			=> \$ignorechannels,
+	'include=s'			=> \$includechannels,
+	'fvicons'			=> \$USEFREEVIEWICONS,
+	'cachefile=s'		=> \$CACHEFILE,
+	'fvcachefile=s'		=> \$FVCACHEFILE,
+	'cachetime=i'		=> \$CACHETIME,
 	'extrachannels=s'	=> \$extrachannels,
-	'paytv=s' => \$paytv,
-	'duplicates=s'	=> \@dupes,
-	'message=s'	=> \$message,
-	'help|?'	=> \$help,
+	'paytv=s' 			=> \$paytv,
+	'hdtv=s' 			=> \$hdtvchannels,
+	'duplicates=s'		=> \@dupes,
+	'message=s'			=> \$message,
+	'help|?'			=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
 
 my %ABCRADIO;
@@ -116,44 +117,44 @@ $ABCRADIO{"29"}{iconurl} 		= "https://www.abc.net.au/cm/rimage/8869368-16x9-larg
 $ABCRADIO{"29"}{servicename}	= "";
 
 my %SBSRADIO;
-$SBSRADIO{"36"}{name}   = "SBS Arabic24";
+$SBSRADIO{"36"}{name}   		= "SBS Arabic24";
 $SBSRADIO{"36"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
 $SBSRADIO{"36"}{servicename}    = "poparaby";
-$SBSRADIO{"37"}{name}   = "SBS Radio 1";
+$SBSRADIO{"37"}{name}   		= "SBS Radio 1";
 $SBSRADIO{"37"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs1_300_colour.png";
 $SBSRADIO{"37"}{servicename}    = "sbs1";
-$SBSRADIO{"38"}{name}   = "SBS Radio 2";
+$SBSRADIO{"38"}{name}   		= "SBS Radio 2";
 $SBSRADIO{"38"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs2_300_colour.png";
 $SBSRADIO{"38"}{servicename}    = "sbs2";
-$SBSRADIO{"39"}{name}   = "SBS Chill";
+$SBSRADIO{"39"}{name}   		= "SBS Chill";
 $SBSRADIO{"39"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_chill_300_colour.png";
 $SBSRADIO{"39"}{servicename}    = "chill";
 
-$SBSRADIO{"301"}{name}  = "SBS Radio 1";
+$SBSRADIO{"301"}{name}  		= "SBS Radio 1";
 $SBSRADIO{"301"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs1_300_colour.png";
 $SBSRADIO{"301"}{servicename}   = "sbs1";
 
-$SBSRADIO{"302"}{name}  = "SBS Radio 2";
+$SBSRADIO{"302"}{name}  		= "SBS Radio 2";
 $SBSRADIO{"302"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs2_300_colour.png";
 $SBSRADIO{"302"}{servicename}   = "sbs2";
 
-$SBSRADIO{"303"}{name}  = "SBS Radio 3";
+$SBSRADIO{"303"}{name}  		= "SBS Radio 3";
 $SBSRADIO{"303"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs3_300_colour.png";
 $SBSRADIO{"303"}{servicename}   = "sbs3";
 
-$SBSRADIO{"304"}{name}  = "SBS Arabic24";
+$SBSRADIO{"304"}{name}  		= "SBS Arabic24";
 $SBSRADIO{"304"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
 $SBSRADIO{"304"}{servicename}   = "poparaby";
 
-$SBSRADIO{"305"}{name}  = "SBS PopDesi";
+$SBSRADIO{"305"}{name}  		= "SBS PopDesi";
 $SBSRADIO{"305"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popdesi_300_colour.png";
 $SBSRADIO{"305"}{servicename}   = "popdesi";
 
-$SBSRADIO{"306"}{name}  = "SBS Chill";
+$SBSRADIO{"306"}{name}  		= "SBS Chill";
 $SBSRADIO{"306"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_chill_300_colour.png";
 $SBSRADIO{"306"}{servicename}   = "chill";
 
-$SBSRADIO{"307"}{name}  = "SBS PopAsia";
+$SBSRADIO{"307"}{name}  		= "SBS PopAsia";
 $SBSRADIO{"307"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popasia_300_colour.png";
 $SBSRADIO{"307"}{servicename}   = "popasia";
 
@@ -240,7 +241,6 @@ warn("Duplicate channels: @dupes \n") if ($VERBOSE);
 warn("Ignored channels: @IGNORECHANNELS \n") if ($VERBOSE);
 warn("Included channels: @IGNORECHANNELS \n") if ($VERBOSE);
 
-
 getFVInfo($ua);
 
 warn("\nInitializing queues...\n") if ($VERBOSE);
@@ -315,7 +315,7 @@ push(@CHANNELDATA,SBSgetchannels());
 push(@CHANNELDATA,ABCgetchannels());
 
 warn("Getting EPG data...\n") if ($VERBOSE);
-push(@GUIDEDATA,getepg($ua, $REGION));
+push(@GUIDEDATA,getepg($ua, $REGION, $hdtvchannels));
 push(@GUIDEDATA,ABCgetepg($ua));
 push(@GUIDEDATA,SBSgetepg($ua));
 
@@ -326,7 +326,7 @@ if (defined ($extrachannels))
 	my ($extraregion, $extrachannel) = $extrachannels =~ /(\d+)-(.*)/;
 	my @channel_array = split(/,/,$extrachannel);
 	push(@CHANNELDATA,getchannels($ua, $extraregion, @channel_array));
-	push(@GUIDEDATA,getepg($ua, $extraregion, @channel_array));
+	push(@GUIDEDATA,getepg($ua, $extraregion, $hdtvchannels, @channel_array));
 }
 if (defined ($paytv))
 {	
@@ -354,7 +354,7 @@ if (defined ($paytv))
 		$count++;
 	} 
 	push(@CHANNELDATA,getchannels($ua, $paytv));
-	push(@GUIDEDATA,getepg($ua, $paytv));
+	push(@GUIDEDATA,getepg($ua, $paytv, $hdtvchannels));
 }
 warn("Closing Queues...\n") if ($VERBOSE);
 # this will close the queues
@@ -511,7 +511,7 @@ sub getchannels
 			$channeldata[$channelcount]->{icon} =~ s/.*(https.*?amazon.*)/$1/;
 			$channeldata[$channelcount]->{icon} = uri_unescape($channeldata[$channelcount]->{icon});
 		}
-		$channeldata[$channelcount]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
+		$channeldata[$channelcount]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if ((defined($FVICONS->{$tmpchanneldata->[$count]->{number}})) and ($USEFREEVIEWICONS));
 		#FIX SBS ICONS
 		if (($USEFREEVIEWICONS) && (!defined($channeldata[$channelcount]->{icon})) && ($channeldata[$channelcount]->{name} =~ /SBS/))
 		{
@@ -542,14 +542,14 @@ sub getchannels
 sub getepg
 {
 	#my $ua = shift;
-	my ($ua, $region, @extrachannels) = @_;
+	my ($ua, $region, $hdtv, @extrachannels) = @_;
 	my $showcount = 0;
 	my $dupe_scount = 0;
 	my $url;
 	my @guidedata;
 	my $region_timezone;
 	my $region_name;
-
+	my @hdtvchannels = split(/,/,$hdtv) if (defined($hdtv));
 	for my $tmpregion ( @REGIONS )
 	{
 		if ($tmpregion->{id} eq $region) {
@@ -726,6 +726,21 @@ sub getepg
 								$guidedata[$showcount]->{channel} = $showdata->{service}->{description};
 								$guidedata[$showcount]->{title} = $showdata->{title};
 								$guidedata[$showcount]->{rating} = $showdata->{classification};
+								if ($showdata->{highDefinition})
+								{
+									$guidedata[$showcount]->{quality} = "HDTV";
+								}
+								else
+								{
+									$guidedata[$showcount]->{quality} = "SDTV";
+								}
+								foreach my $hdtvc (@hdtvchannels)
+								{
+									if ($guidedata[$showcount]->{id} =~ /$hdtvc\./)
+									{
+										$guidedata[$showcount]->{quality} = "HDTV";
+									}
+								}
 								if (defined($showdata->{program}->{image}))
 								{
 									$guidedata[$showcount]->{url} = $showdata->{program}->{image};
@@ -935,6 +950,12 @@ sub printepg
 		}
 		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
 		${$XMLRef}->emptyTag('previously-shown') if (defined($items->{previouslyshown}));
+		if (defined($items->{quality}))
+		{
+			${$XMLRef}->startTag('video');
+			${$XMLRef}->dataElement('quality', sanitizeText($items->{quality}));
+			${$XMLRef}->endTag('video');
+		}
 		if (defined($items->{rating}))
 		{
 			${$XMLRef}->startTag('rating');
@@ -1145,7 +1166,7 @@ sub getFVShowIcon
 		}
 		print "+" if ($VERBOSE);
 	}
-	print "\n-------------------------\ngetFVShowIcon\n$data\n" if ($DEBUG);
+	warn("\n-------------------------\ngetFVShowIcon\n$data\n") if ($DEBUG);
 
 	my $tmpchanneldata;
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
