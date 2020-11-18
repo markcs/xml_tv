@@ -171,15 +171,15 @@ get_fixYourTVLCNMapping(@mapyourtvlcn);
 if (defined($configfile)) {
 	$Config = Config::Tiny->read( $configfile );
 	$log = $Config->{main}->{log} if (defined($Config->{main}->{log}));
-	$DEBUG = $Config->{main}->{debug} if (defined($Config->{main}->{debug}));
-	$VERBOSE = $Config->{main}->{verbose} if (defined($Config->{main}->{verbose}));
-	$pretty = $Config->{main}->{pretty} if (defined($Config->{main}->{pretty}));
+	$DEBUG = ToBoolean($Config->{main}->{debug}) if (defined($Config->{main}->{debug}));
+	$VERBOSE = ToBoolean($Config->{main}->{verbose}) if (defined($Config->{main}->{verbose}));
+	$pretty = ToBoolean($Config->{main}->{pretty}) if (defined($Config->{main}->{pretty}));	
 	$NUMDAYS = $Config->{main}->{days} if (defined($Config->{main}->{days}));
 	$REGION = $Config->{main}->{region} if (defined($Config->{main}->{region}));
 	$outputfile = $Config->{main}->{output} if (defined($Config->{main}->{output}));
 	$ignorechannels = $Config->{main}->{ignore} if (defined($Config->{main}->{ignore}));
 	$includechannels = $Config->{main}->{include} if (defined($Config->{main}->{include}));
-	$USEFREEVIEWICONS = $Config->{main}->{fvicons} if (defined($Config->{main}->{fvicons}));
+	$USEFREEVIEWICONS = ToBoolean($Config->{main}->{fvicons}) if (defined($Config->{main}->{fvicons}));
 	$CACHEFILE = $Config->{main}->{cachefile} if (defined($Config->{main}->{cachefile}));
 	$FVCACHEFILE = $Config->{main}->{fvcachefile} if (defined($Config->{main}->{fvcachefile}));
 	$CACHETIME = $Config->{main}->{cachetime} if (defined($Config->{main}->{cachetime}));
@@ -192,7 +192,7 @@ if (defined($configfile)) {
 	{
 		$YOURTVTOLCN = $Config->{mappingYourTVtoLCN};
 	}
-    if (defined($Config->{duplicate}))
+    if ((defined($Config->{duplicate})) and ((keys %{$Config->{duplicate}}) > 0))
 	{
 		@DUPLICATED_CHANNELS = ();
 		%DUPLICATE_CHANNELS = %{$Config->{duplicate}};
@@ -1580,4 +1580,14 @@ sub geturl
 		$retry++;
 	}
     return $res;
+}
+
+sub ToBoolean
+{
+    my $value = shift;
+    if (($value eq 1) or ($value =~ /^true$/i))
+    {
+        return 1;
+    }
+    return 0;
 }
