@@ -933,6 +933,13 @@ sub getepg
 										$DUPEGUIDEDATA[$DUPES_COUNT] = clone($guidedata[$showcount]);
 										$DUPEGUIDEDATA[$DUPES_COUNT]->{id} = $did;
 										$DUPEGUIDEDATA[$DUPES_COUNT]->{channel} = $did;
+										foreach my $hdtvc (@hdtvchannels)
+										{
+											if ($DUPEGUIDEDATA[$DUPES_COUNT]->{id} =~ /$hdtvc\./)
+											{
+												$DUPEGUIDEDATA[$DUPES_COUNT]->{quality} = "HDTV";
+											}
+										}
 										warn("Duplicated guide data for show entry $showcount -> $did $DUPES_COUNT ($guidedata[$showcount] -> $DUPEGUIDEDATA[$DUPES_COUNT]) ...\n") if ($DEBUG);
 										++$DUPES_COUNT;
 									}
