@@ -917,7 +917,6 @@ sub getepg
 								}
 								if (defined($showdata->{repeat} ) )
 								{
-								#	$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
 									$guidedata[$showcount]->{previouslyshown} = 1; #"$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
 								}
 								if (defined($showdata->{program}->{imdbId} ) )
