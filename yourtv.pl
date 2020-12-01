@@ -932,6 +932,7 @@ sub getepg
 										$DUPEGUIDEDATA[$DUPES_COUNT] = clone($guidedata[$showcount]);
 										$DUPEGUIDEDATA[$DUPES_COUNT]->{id} = $did;
 										$DUPEGUIDEDATA[$DUPES_COUNT]->{channel} = $did;
+										$DUPEGUIDEDATA[$DUPES_COUNT]->{quality} = "SDTV";
 										foreach my $hdtvc (@hdtvchannels)
 										{
 											if ($DUPEGUIDEDATA[$DUPES_COUNT]->{id} =~ /$hdtvc\./)
