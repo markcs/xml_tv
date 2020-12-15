@@ -35,6 +35,7 @@ use Clone qw( clone );
 use Cwd qw( getcwd );
 use HTML::TableExtract;
 use DB_File;
+use Config::Tiny;
 
 my %map = (
 	 '&' => 'and',
@@ -44,6 +45,8 @@ my $chars = join '', keys %map;
 my %DUPLICATE_CHANNELS = ();
 my @DUPLICATED_CHANNELS = ();
 my @dupes;
+my @mapyourtvlcn;
+my $YOURTVTOLCN;
 my @CHANNELDATA;
 my @DUPECHANDATA;
 my @DUPEGUIDEDATA;
@@ -55,34 +58,39 @@ my $FVTMPCACHEFILE = ".$$.freeview-tmp-cache.db";
 my $CACHEFILE = "yourtv.db";
 my $CACHETIME = 86400; # 1 day - don't change this unless you know what you are doing.
 my $TMPCACHEFILE = ".$$.yourtv-tmp-cache.db";
+my $MANUALICONS;
 my $ua;
+my $Config;
 my $DUPES_COUNT = 0;
 my $STDOLD;
 my (%dbm_hash, %thrdret);
 my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
-my ($DEBUG, $VERBOSE, $log, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $paytv, $REGION, $outputfile, $message, $help) = (0, 0, undef, 0, 0, 7, undef, undef, undef, undef, undef, undef ,undef, undef);
+my ($configfile, $DEBUG, $VERBOSE, $log, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $paytv, $hdtvchannels, $REGION, $outputfile, $message, $help) = (undef, 0, 0, undef, 0, 0, 7, undef, undef, undef, undef, 0, undef ,undef, undef, undef);
 GetOptions
 (
-	'debug'		=> \$DEBUG,
-	'verbose'	=> \$VERBOSE,
-	'log=s'	=> \$log,
-	'pretty'	=> \$pretty,
-	'days=i'	=> \$NUMDAYS,
-	'region=s'	=> \$REGION,
-	'output=s'	=> \$outputfile,
-	'ignore=s'	=> \$ignorechannels,
-	'include=s'	=> \$includechannels,
-	'fvicons'	=> \$USEFREEVIEWICONS,
-	'cachefile=s'	=> \$CACHEFILE,
-	'fvcachefile=s'	=> \$FVCACHEFILE,
-	'cachetime=i'	=> \$CACHETIME,
+	'config=s'			=> \$configfile,
+	'debug'				=> \$DEBUG,
+	'verbose'			=> \$VERBOSE,
+	'log=s'				=> \$log,
+	'pretty'			=> \$pretty,
+	'days=i'			=> \$NUMDAYS,
+	'region=s'			=> \$REGION,
+	'output=s'			=> \$outputfile,
+	'ignore=s'			=> \$ignorechannels,
+	'include=s'			=> \$includechannels,
+	'fvicons'			=> \$USEFREEVIEWICONS,
+	'cachefile=s'		=> \$CACHEFILE,
+	'fvcachefile=s'		=> \$FVCACHEFILE,
+	'cachetime=i'		=> \$CACHETIME,
 	'extrachannels=s'	=> \$extrachannels,
-	'paytv=s' => \$paytv,
-	'duplicates=s'	=> \@dupes,
-	'message=s'	=> \$message,
-	'help|?'	=> \$help,
+	'paytv=s' 			=> \$paytv,
+	'hdtv=s' 			=> \$hdtvchannels,
+	'message=s'			=> \$message,
+	'duplicates=s'		=> \@dupes,
+	'changeyourtvlcn=s'	=> \@mapyourtvlcn,
+	'help|?'			=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
 
 my %ABCRADIO;
@@ -116,48 +124,84 @@ $ABCRADIO{"29"}{iconurl} 		= "https://www.abc.net.au/cm/rimage/8869368-16x9-larg
 $ABCRADIO{"29"}{servicename}	= "";
 
 my %SBSRADIO;
-$SBSRADIO{"36"}{name}   = "SBS Arabic24";
+$SBSRADIO{"36"}{name}   		= "SBS Arabic24";
 $SBSRADIO{"36"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
 $SBSRADIO{"36"}{servicename}    = "poparaby";
-$SBSRADIO{"37"}{name}   = "SBS Radio 1";
+$SBSRADIO{"37"}{name}   		= "SBS Radio 1";
 $SBSRADIO{"37"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs1_300_colour.png";
 $SBSRADIO{"37"}{servicename}    = "sbs1";
-$SBSRADIO{"38"}{name}   = "SBS Radio 2";
+$SBSRADIO{"38"}{name}   		= "SBS Radio 2";
 $SBSRADIO{"38"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs2_300_colour.png";
 $SBSRADIO{"38"}{servicename}    = "sbs2";
-$SBSRADIO{"39"}{name}   = "SBS Chill";
+$SBSRADIO{"39"}{name}   		= "SBS Chill";
 $SBSRADIO{"39"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_chill_300_colour.png";
 $SBSRADIO{"39"}{servicename}    = "chill";
 
-$SBSRADIO{"301"}{name}  = "SBS Radio 1";
+$SBSRADIO{"301"}{name}  		= "SBS Radio 1";
 $SBSRADIO{"301"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs1_300_colour.png";
 $SBSRADIO{"301"}{servicename}   = "sbs1";
 
-$SBSRADIO{"302"}{name}  = "SBS Radio 2";
+$SBSRADIO{"302"}{name}  		= "SBS Radio 2";
 $SBSRADIO{"302"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs2_300_colour.png";
 $SBSRADIO{"302"}{servicename}   = "sbs2";
 
-$SBSRADIO{"303"}{name}  = "SBS Radio 3";
+$SBSRADIO{"303"}{name}  		= "SBS Radio 3";
 $SBSRADIO{"303"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs3_300_colour.png";
 $SBSRADIO{"303"}{servicename}   = "sbs3";
 
-$SBSRADIO{"304"}{name}  = "SBS Arabic24";
+$SBSRADIO{"304"}{name}  		= "SBS Arabic24";
 $SBSRADIO{"304"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
 $SBSRADIO{"304"}{servicename}   = "poparaby";
 
-$SBSRADIO{"305"}{name}  = "SBS PopDesi";
+$SBSRADIO{"305"}{name}  		= "SBS PopDesi";
 $SBSRADIO{"305"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popdesi_300_colour.png";
 $SBSRADIO{"305"}{servicename}   = "popdesi";
 
-$SBSRADIO{"306"}{name}  = "SBS Chill";
+$SBSRADIO{"306"}{name}  		= "SBS Chill";
 $SBSRADIO{"306"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_chill_300_colour.png";
 $SBSRADIO{"306"}{servicename}   = "chill";
 
-$SBSRADIO{"307"}{name}  = "SBS PopAsia";
+$SBSRADIO{"307"}{name}  		= "SBS PopAsia";
 $SBSRADIO{"307"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popasia_300_colour.png";
 $SBSRADIO{"307"}{servicename}   = "popasia";
 
 get_duplicate_channels(@dupes) if (@dupes and scalar @dupes);
+get_fixYourTVLCNMapping(@mapyourtvlcn);
+
+if (defined($configfile)) {
+	$Config = Config::Tiny->read( $configfile );
+	$log = $Config->{main}->{log} if (defined($Config->{main}->{log}));
+	$DEBUG = ToBoolean($Config->{main}->{debug}) if (defined($Config->{main}->{debug}));
+	$VERBOSE = ToBoolean($Config->{main}->{verbose}) if (defined($Config->{main}->{verbose}));
+	$pretty = ToBoolean($Config->{main}->{pretty}) if (defined($Config->{main}->{pretty}));	
+	$NUMDAYS = $Config->{main}->{days} if (defined($Config->{main}->{days}));
+	$REGION = $Config->{main}->{region} if (defined($Config->{main}->{region}));
+	$outputfile = $Config->{main}->{output} if (defined($Config->{main}->{output}));
+	$ignorechannels = $Config->{main}->{ignore} if (defined($Config->{main}->{ignore}));
+	$includechannels = $Config->{main}->{include} if (defined($Config->{main}->{include}));
+	$USEFREEVIEWICONS = ToBoolean($Config->{main}->{fvicons}) if (defined($Config->{main}->{fvicons}));
+	$CACHEFILE = $Config->{main}->{cachefile} if (defined($Config->{main}->{cachefile}));
+	$FVCACHEFILE = $Config->{main}->{fvcachefile} if (defined($Config->{main}->{fvcachefile}));
+	$CACHETIME = $Config->{main}->{cachetime} if (defined($Config->{main}->{cachetime}));
+	$extrachannels = $Config->{main}->{extrachannels} if (defined($Config->{main}->{extrachannels}));
+	$paytv = $Config->{main}->{paytv} if (defined($Config->{main}->{paytv}));
+	$hdtvchannels = $Config->{main}->{hdtv} if (defined($Config->{main}->{hdtv}));
+	$message = $Config->{main}->{message} if (defined($Config->{main}->{message}));
+	$MANUALICONS = $Config->{icons} if (defined($Config->{icons}));
+	if ((defined($Config->{mappingYourTVtoLCN})) and ((keys %{$Config->{mappingYourTVtoLCN}}) > 0))
+	{
+		$YOURTVTOLCN = $Config->{mappingYourTVtoLCN};
+	}
+    if ((defined($Config->{duplicate})) and ((keys %{$Config->{duplicate}}) > 0))
+	{
+		@DUPLICATED_CHANNELS = ();
+		%DUPLICATE_CHANNELS = %{$Config->{duplicate}};
+		while (my ($key, $value) = each %DUPLICATE_CHANNELS)
+		{
+			push(@DUPLICATED_CHANNELS,$value);
+		}
+	}
+}
 
 if (defined($log))
 {
@@ -240,7 +284,6 @@ warn("Duplicate channels: @dupes \n") if ($VERBOSE);
 warn("Ignored channels: @IGNORECHANNELS \n") if ($VERBOSE);
 warn("Included channels: @IGNORECHANNELS \n") if ($VERBOSE);
 
-
 getFVInfo($ua);
 
 warn("\nInitializing queues...\n") if ($VERBOSE);
@@ -315,7 +358,7 @@ push(@CHANNELDATA,SBSgetchannels());
 push(@CHANNELDATA,ABCgetchannels());
 
 warn("Getting EPG data...\n") if ($VERBOSE);
-push(@GUIDEDATA,getepg($ua, $REGION));
+push(@GUIDEDATA,getepg($ua, $REGION, $hdtvchannels));
 push(@GUIDEDATA,ABCgetepg($ua));
 push(@GUIDEDATA,SBSgetepg($ua));
 
@@ -326,7 +369,7 @@ if (defined ($extrachannels))
 	my ($extraregion, $extrachannel) = $extrachannels =~ /(\d+)-(.*)/;
 	my @channel_array = split(/,/,$extrachannel);
 	push(@CHANNELDATA,getchannels($ua, $extraregion, @channel_array));
-	push(@GUIDEDATA,getepg($ua, $extraregion, @channel_array));
+	push(@GUIDEDATA,getepg($ua, $extraregion, $hdtvchannels, @channel_array));
 }
 if (defined ($paytv))
 {	
@@ -354,7 +397,7 @@ if (defined ($paytv))
 		$count++;
 	} 
 	push(@CHANNELDATA,getchannels($ua, $paytv));
-	push(@GUIDEDATA,getepg($ua, $paytv));
+	push(@GUIDEDATA,getepg($ua, $paytv, $hdtvchannels));
 }
 warn("Closing Queues...\n") if ($VERBOSE);
 # this will close the queues
@@ -488,7 +531,6 @@ sub getchannels
 	{
 		die("(getchannels) Unable to connect to YourTV.  (".$res->{code}.")\n");
 	}	
-	#die("Unable to connect to YourTV. (getchannels)\n") if (!$res->is_success);
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 	my $dupe_count = 0;
 	my $channelcount = 0;
@@ -499,26 +541,32 @@ sub getchannels
 		next if ( ( !( grep( /^$tmpchanneldata->[$count]->{number}$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 		next if ( ( !( grep( /^$tmpchanneldata->[$count]->{number}$/, @extrachannels ) ) ) and ((@extrachannels > 0)));
 
-		my $channelIsDuped = 0;
-		++$channelIsDuped if ( ( grep( /$tmpchanneldata->[$count]->{number}$/, @DUPLICATED_CHANNELS ) ) );
-		#$channeldata[$channelcount]->{tv_id} = $tmpchanneldata->[$count]->{id};
 		$channeldata[$channelcount]->{name} = $tmpchanneldata->[$count]->{description};
-		$channeldata[$channelcount]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
-		$channeldata[$channelcount]->{lcn} = $tmpchanneldata->[$count]->{number};
-		if (defined($tmpchanneldata->[$count]->{logo}->{url}))
+		if (defined($YOURTVTOLCN->{$tmpchanneldata->[$count]->{number}}))
+		{			
+			$channeldata[$channelcount]->{id} = $YOURTVTOLCN->{$tmpchanneldata->[$count]->{number}}.".yourtv.com.au";
+			$channeldata[$channelcount]->{lcn} = $YOURTVTOLCN->{$tmpchanneldata->[$count]->{number}};
+			warn("Changed YourTV channel $tmpchanneldata->[$count]->{number} to $YOURTVTOLCN->{$tmpchanneldata->[$count]->{number}} ...\n") if ($VERBOSE);
+		}
+		else
+		{
+			$channeldata[$channelcount]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
+			$channeldata[$channelcount]->{lcn} = $tmpchanneldata->[$count]->{number};
+		}
+		my $channelIsDuped = 0;
+		++$channelIsDuped if ( ( grep( /$channeldata[$channelcount]->{lcn}$/, @DUPLICATED_CHANNELS ) ) );
+
+		if (defined($MANUALICONS->{$channeldata[$channelcount]->{lcn}}))
+		{
+			$channeldata[$channelcount]->{icon} = $MANUALICONS->{$channeldata[$channelcount]->{lcn}};
+		}
+		elsif (defined($tmpchanneldata->[$count]->{logo}->{url}))
 		{
 			$channeldata[$channelcount]->{icon} = $tmpchanneldata->[$count]->{logo}->{url};
 			$channeldata[$channelcount]->{icon} =~ s/.*(https.*?amazon.*)/$1/;
 			$channeldata[$channelcount]->{icon} = uri_unescape($channeldata[$channelcount]->{icon});
 		}
-		$channeldata[$channelcount]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
-		#FIX SBS ICONS
-		if (($USEFREEVIEWICONS) && (!defined($channeldata[$channelcount]->{icon})) && ($channeldata[$channelcount]->{name} =~ /SBS/))
-		{
-			$tmpchanneldata->[$channelcount]->{number} =~ s/(\d)./$1/;
-			$channeldata[$channelcount]->{icon} = $FVICONS->{$tmpchanneldata->[$count]->{number}} if (defined($FVICONS->{$tmpchanneldata->[$count]->{number}}));
-		}
-
+		$channeldata[$channelcount]->{icon} = $FVICONS->{$channeldata[$channelcount]->{lcn}} if ((defined($FVICONS->{$channeldata[$channelcount]->{lcn}})) and ($USEFREEVIEWICONS));
 		warn("Got channel $channeldata[$channelcount]->{id} - $channeldata[$channelcount]->{name} ...\n") if ($VERBOSE);
 		if ($channelIsDuped)
 		{
@@ -542,14 +590,14 @@ sub getchannels
 sub getepg
 {
 	#my $ua = shift;
-	my ($ua, $region, @extrachannels) = @_;
+	my ($ua, $region, $hdtv, @extrachannels) = @_;
 	my $showcount = 0;
 	my $dupe_scount = 0;
 	my $url;
 	my @guidedata;
 	my $region_timezone;
 	my $region_name;
-
+	my @hdtvchannels = split(/,/,$hdtv) if (defined($hdtv));
 	for my $tmpregion ( @REGIONS )
 	{
 		if ($tmpregion->{id} eq $region) {
@@ -589,16 +637,19 @@ sub getepg
 					next if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @IGNORECHANNELS ) ) );
 					next if ( ( !( grep( /^$chandata->[$channelcount]->{number}$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 					next if ( ( !( grep( /^$chandata->[$channelcount]->{number}$/, @extrachannels ) ) ) and ((@extrachannels > 0)));
-					#if (defined($extrachannel))
-					#{
-					#	next if ($chandata->[$channelcount]->{number} ne $extrachannel);
-					#}
+					my $enqueued = 0;					
+					if (defined($YOURTVTOLCN->{$chandata->[$channelcount]->{number}}))
+					{
+						$id = $YOURTVTOLCN->{$chandata->[$channelcount]->{number}};
+					}
+					else
+					{
+						$id = $chandata->[$channelcount]->{number};
+					}
 					my $channelIsDuped = 0;
-					$channelIsDuped = $chandata->[$channelcount]->{number} if ( ( grep( /^$chandata->[$channelcount]->{number}$/, @DUPLICATED_CHANNELS ) ) );
-
-					my $enqueued = 0;
-					$id = $chandata->[$channelcount]->{number}.".yourtv.com.au";
+ 					$channelIsDuped = $id if ( ( grep( /^$id$/, @DUPLICATED_CHANNELS ) ) );
 					my $blocks = $chandata->[$channelcount]->{blocks};
+					$id = $id.".yourtv.com.au";
 					for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
 					{
 						my $subblocks = $blocks->[$blockcount]->{shows};
@@ -726,6 +777,21 @@ sub getepg
 								$guidedata[$showcount]->{channel} = $showdata->{service}->{description};
 								$guidedata[$showcount]->{title} = $showdata->{title};
 								$guidedata[$showcount]->{rating} = $showdata->{classification};
+								if ($showdata->{highDefinition})
+								{
+									$guidedata[$showcount]->{quality} = "HDTV";
+								}
+								else
+								{
+									$guidedata[$showcount]->{quality} = "SDTV";
+								}
+								foreach my $hdtvc (@hdtvchannels)
+								{
+									if ($guidedata[$showcount]->{id} =~ /$hdtvc\./)
+									{
+										$guidedata[$showcount]->{quality} = "HDTV";
+									}
+								}
 								if (defined($showdata->{program}->{image}))
 								{
 									$guidedata[$showcount]->{url} = $showdata->{program}->{image};
@@ -851,7 +917,6 @@ sub getepg
 								}
 								if (defined($showdata->{repeat} ) )
 								{
-								#	$guidedata[$showcount]->{originalairdate} = $episodeYear."-".$episodeMonth."-".$episodeDay." ".$episodeHour.":".$episodeMinute.":00";#"$1-$2-$3 $4:$5:00";
 									$guidedata[$showcount]->{previouslyshown} = 1; #"$episodeYear-$episodeMonth-$episodeDay";#"$1-$2-$3";
 								}
 								if (defined($showdata->{program}->{imdbId} ) )
@@ -867,7 +932,15 @@ sub getepg
 										$DUPEGUIDEDATA[$DUPES_COUNT] = clone($guidedata[$showcount]);
 										$DUPEGUIDEDATA[$DUPES_COUNT]->{id} = $did;
 										$DUPEGUIDEDATA[$DUPES_COUNT]->{channel} = $did;
-										warn("Duplicated guide data for show entry $showcount -> $DUPES_COUNT ($guidedata[$showcount] -> $DUPEGUIDEDATA[$DUPES_COUNT]) ...\n") if ($DEBUG);
+										$DUPEGUIDEDATA[$DUPES_COUNT]->{quality} = "SDTV";
+										foreach my $hdtvc (@hdtvchannels)
+										{
+											if ($DUPEGUIDEDATA[$DUPES_COUNT]->{id} =~ /$hdtvc\./)
+											{
+												$DUPEGUIDEDATA[$DUPES_COUNT]->{quality} = "HDTV";
+											}
+										}
+										warn("Duplicated guide data for show entry $showcount -> $did $DUPES_COUNT ($guidedata[$showcount] -> $DUPEGUIDEDATA[$DUPES_COUNT]) ...\n") if ($DEBUG);
 										++$DUPES_COUNT;
 									}
 								}
@@ -935,6 +1008,12 @@ sub printepg
 		}
 		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
 		${$XMLRef}->emptyTag('previously-shown') if (defined($items->{previouslyshown}));
+		if (defined($items->{quality}))
+		{
+			${$XMLRef}->startTag('video');
+			${$XMLRef}->dataElement('quality', sanitizeText($items->{quality}));
+			${$XMLRef}->endTag('video');
+		}
 		if (defined($items->{rating}))
 		{
 			${$XMLRef}->startTag('rating');
@@ -1145,7 +1224,7 @@ sub getFVShowIcon
 		}
 		print "+" if ($VERBOSE);
 	}
-	print "\n-------------------------\ngetFVShowIcon\n$data\n" if ($DEBUG);
+	warn("\n-------------------------\ngetFVShowIcon\n$data\n") if ($DEBUG);
 
 	my $tmpchanneldata;
 	$tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
@@ -1257,6 +1336,15 @@ sub get_duplicate_channels
 	}
 }
 
+sub get_fixYourTVLCNMapping
+{
+	foreach my $lcn (@_)
+	{
+		my ($channel, $original) = split(/=/, $lcn);
+		$YOURTVTOLCN->{$channel} = $original;
+	}
+}
+
 sub usage
 {
 	@REGIONS = buildregions() if (!(@REGIONS));
@@ -1272,6 +1360,8 @@ sub usage
 		. "\t--duplicates <orig>=<ch1>,<ch2>\tOption may be specified more than once, this will create a guide where different channels have the same data.\n"
 		. "\t--include=<channel to include>\tA comma separated list of channel numbers to include. The channel number is matched against the lcn tag within the xml.\n"
 		. "\t--extrachannels <region>-<ch1>,<ch2>\tThis will fetch EPG data for the channels specified from one other region.\n"
+		. "\t--mapyourtvlcn <lcn from YourTV>=<New lcn number>\tChange channel number from YourTV to a new channel number.\n"
+		. "\t--hdtv <ch1>,<ch2>....\tDefine which channels should be marked as HDTV.\n"
 		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
 		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
 		. "\t--debug\t\t\t\tOnly used for debugging purposes.\n"
@@ -1392,10 +1482,8 @@ sub ABCgetepg
 									$tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{mini_synopsis};
 								}
 								$showcount++;
-
                         }
                 }
-
         }
         warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
         return @tmpguidedata;
@@ -1469,10 +1557,8 @@ sub SBSgetepg
                                 my $desc = $tmpdata->{$key}->{description};
                                 $tmpguidedata[$showcount]->{desc} = $tmpdata->{$key}->{description} if (!(ref $desc eq ref {}));
                                 $showcount++;
-
                         }
                 }
-
         }
         warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
         return @tmpguidedata;
@@ -1501,4 +1587,14 @@ sub geturl
 		$retry++;
 	}
     return $res;
+}
+
+sub ToBoolean
+{
+    my $value = shift;
+    if (($value eq 1) or ($value =~ /^true$/i))
+    {
+        return 1;
+    }
+    return 0;
 }
