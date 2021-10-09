@@ -101,7 +101,7 @@ $ABCRADIO{"201"}{name}  		= "ABC Jazz";
 $ABCRADIO{"201"}{iconurl}		= "https://www.abc.net.au/cm/lb/8785730/thumbnail/station-logo-thumbnail.png";
 $ABCRADIO{"201"}{servicename} 	= "jazz";
 $ABCRADIO{"202"}{name}			= "ABC Kids Listen";
-$ABCRADIO{"202"}{iconurl}		= "https://d24j9r7lck9cin.cloudfront.net/l/o/7/7118.1519190192.png";
+$ABCRADIO{"202"}{iconurl}		= "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/abc%20kids%20listen.png";
 $ABCRADIO{"202"}{servicename}	= "kidslisten";
 $ABCRADIO{"203"}{name}			= "ABC Country";
 $ABCRADIO{"203"}{iconurl}		= "https://www.abc.net.au/radio/images/service/2018/country_480.png";
@@ -125,44 +125,44 @@ $ABCRADIO{"29"}{servicename}	= "";
 
 my %SBSRADIO;
 $SBSRADIO{"36"}{name}   		= "SBS Arabic24";
-$SBSRADIO{"36"}{iconurl}        = "https://static.mytuner.mobi/media/radios-150px/4f3nsjbcdzgn.jpeg";
+$SBSRADIO{"36"}{iconurl}        = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20arabic24.png";
 $SBSRADIO{"36"}{servicename}    = "poparaby";
 $SBSRADIO{"37"}{name}   		= "SBS Radio 1";
-$SBSRADIO{"37"}{iconurl}        = "https://static.mytuner.mobi/media/radios-150px/k38rs5stkvay.png";
+$SBSRADIO{"37"}{iconurl}        = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20radio%201.png";
 $SBSRADIO{"37"}{servicename}    = "sbs1";
 $SBSRADIO{"38"}{name}   		= "SBS Radio 2";
-$SBSRADIO{"38"}{iconurl}        = "https://static.mytuner.mobi/media/radios-150px/tsgmmse7722v.png";
+$SBSRADIO{"38"}{iconurl}        = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20radio%202.png";
 $SBSRADIO{"38"}{servicename}    = "sbs2";
 $SBSRADIO{"39"}{name}   		= "SBS Chill";
-$SBSRADIO{"39"}{iconurl}        = "https://static.mytuner.mobi/media/radios-150px/EZdmrZUSrZ.jpg";
+$SBSRADIO{"39"}{iconurl}        = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20chill.png";
 $SBSRADIO{"39"}{servicename}    = "chill";
 
 $SBSRADIO{"301"}{name}  		= "SBS Radio 1";
-$SBSRADIO{"301"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/k38rs5stkvay.png";
+$SBSRADIO{"301"}{iconurl}       = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20radio%201.png";
 $SBSRADIO{"301"}{servicename}   = "sbs1";
 
 $SBSRADIO{"302"}{name}  		= "SBS Radio 2";
-$SBSRADIO{"302"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/tsgmmse7722v.png";
+$SBSRADIO{"302"}{iconurl}       = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20radio%202.png";
 $SBSRADIO{"302"}{servicename}   = "sbs2";
 
 $SBSRADIO{"303"}{name}  		= "SBS Radio 3";
-$SBSRADIO{"303"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/fxkaanrznucg.png";
+$SBSRADIO{"303"}{iconurl}       = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20radio%203.png";
 $SBSRADIO{"303"}{servicename}   = "sbs3";
 
 $SBSRADIO{"304"}{name}  		= "SBS Arabic24";
-$SBSRADIO{"304"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/4f3nsjbcdzgn.jpeg";
+$SBSRADIO{"304"}{iconurl}       = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20arabic24.png";
 $SBSRADIO{"304"}{servicename}   = "poparaby";
 
 $SBSRADIO{"305"}{name}  		= "SBS PopDesi";
-$SBSRADIO{"305"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/d4atdtzsmrkw.png";
+$SBSRADIO{"305"}{iconurl}       = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20popdesi.png";
 $SBSRADIO{"305"}{servicename}   = "popdesi";
 
 $SBSRADIO{"306"}{name}  		= "SBS Chill";
-$SBSRADIO{"306"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/EZdmrZUSrZ.jpg";
+$SBSRADIO{"306"}{iconurl}       = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20chill.png";
 $SBSRADIO{"306"}{servicename}   = "chill";
 
 $SBSRADIO{"307"}{name}  		= "SBS PopAsia";
-$SBSRADIO{"307"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/d4atdtzsmrkw.png";
+$SBSRADIO{"307"}{iconurl}       = "https://raw.githubusercontent.com/mathewcallaghan/australian-tv-network-logo-icons/master/colour/sbs%20popasia.png";
 $SBSRADIO{"307"}{servicename}   = "popasia";
 
 get_duplicate_channels(@dupes) if (@dupes and scalar @dupes);
