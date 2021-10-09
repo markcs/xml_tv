@@ -125,44 +125,44 @@ $ABCRADIO{"29"}{servicename}	= "";
 
 my %SBSRADIO;
 $SBSRADIO{"36"}{name}   		= "SBS Arabic24";
-$SBSRADIO{"36"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
+$SBSRADIO{"36"}{iconurl}        = "https://static.mytuner.mobi/media/radios-150px/4f3nsjbcdzgn.jpeg";
 $SBSRADIO{"36"}{servicename}    = "poparaby";
 $SBSRADIO{"37"}{name}   		= "SBS Radio 1";
-$SBSRADIO{"37"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs1_300_colour.png";
+$SBSRADIO{"37"}{iconurl}        = "https://static.mytuner.mobi/media/radios-150px/k38rs5stkvay.png";
 $SBSRADIO{"37"}{servicename}    = "sbs1";
 $SBSRADIO{"38"}{name}   		= "SBS Radio 2";
-$SBSRADIO{"38"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs2_300_colour.png";
+$SBSRADIO{"38"}{iconurl}        = "https://static.mytuner.mobi/media/radios-150px/tsgmmse7722v.png";
 $SBSRADIO{"38"}{servicename}    = "sbs2";
 $SBSRADIO{"39"}{name}   		= "SBS Chill";
-$SBSRADIO{"39"}{iconurl}        = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_chill_300_colour.png";
+$SBSRADIO{"39"}{iconurl}        = "https://static.mytuner.mobi/media/radios-150px/EZdmrZUSrZ.jpg";
 $SBSRADIO{"39"}{servicename}    = "chill";
 
 $SBSRADIO{"301"}{name}  		= "SBS Radio 1";
-$SBSRADIO{"301"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs1_300_colour.png";
+$SBSRADIO{"301"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/k38rs5stkvay.png";
 $SBSRADIO{"301"}{servicename}   = "sbs1";
 
 $SBSRADIO{"302"}{name}  		= "SBS Radio 2";
-$SBSRADIO{"302"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs2_300_colour.png";
+$SBSRADIO{"302"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/tsgmmse7722v.png";
 $SBSRADIO{"302"}{servicename}   = "sbs2";
 
 $SBSRADIO{"303"}{name}  		= "SBS Radio 3";
-$SBSRADIO{"303"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbs3_300_colour.png";
+$SBSRADIO{"303"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/fxkaanrznucg.png";
 $SBSRADIO{"303"}{servicename}   = "sbs3";
 
 $SBSRADIO{"304"}{name}  		= "SBS Arabic24";
-$SBSRADIO{"304"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/headerlogo_sbsarabic24_300_colour.png";
+$SBSRADIO{"304"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/4f3nsjbcdzgn.jpeg";
 $SBSRADIO{"304"}{servicename}   = "poparaby";
 
 $SBSRADIO{"305"}{name}  		= "SBS PopDesi";
-$SBSRADIO{"305"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popdesi_300_colour.png";
+$SBSRADIO{"305"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/d4atdtzsmrkw.png";
 $SBSRADIO{"305"}{servicename}   = "popdesi";
 
 $SBSRADIO{"306"}{name}  		= "SBS Chill";
-$SBSRADIO{"306"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_chill_300_colour.png";
+$SBSRADIO{"306"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/EZdmrZUSrZ.jpg";
 $SBSRADIO{"306"}{servicename}   = "chill";
 
 $SBSRADIO{"307"}{name}  		= "SBS PopAsia";
-$SBSRADIO{"307"}{iconurl}       = "http://d6ksarnvtkr11.cloudfront.net/resources/sbs/radio/images/header_popasia_300_colour.png";
+$SBSRADIO{"307"}{iconurl}       = "https://static.mytuner.mobi/media/radios-150px/d4atdtzsmrkw.png";
 $SBSRADIO{"307"}{servicename}   = "popasia";
 
 get_duplicate_channels(@dupes) if (@dupes and scalar @dupes);
