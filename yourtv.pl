@@ -351,7 +351,6 @@ my $fdrw = $dbrw->fd;							# get file desc
 open DBMRW, "+<&=$fdrw" or die "Could not dup DBMRW for lock: $!";	# Get dup filehandle
 flock DBMRW, LOCK_EX;							# Lock it exclusively
 undef $dbrw;
-
 warn("Getting Channel list...\n") if ($VERBOSE);
 push(@CHANNELDATA,getchannels($ua, $REGION));
 push(@CHANNELDATA,SBSgetchannels());
@@ -361,7 +360,6 @@ warn("Getting EPG data...\n") if ($VERBOSE);
 push(@GUIDEDATA,getepg($ua, $REGION, $hdtvchannels));
 push(@GUIDEDATA,ABCgetepg($ua));
 push(@GUIDEDATA,SBSgetepg($ua));
-
 warn("Getting extra channel and EPG data...\n\n") if ($VERBOSE);
 if (defined ($extrachannels))
 {
@@ -1131,26 +1129,27 @@ sub buildregions {
 
 sub nextday
 {
-    my $daycount = shift;
-    my $returnday;
-    my @days = ("mon","tue","wed","thu","fri","sat","sun");
-    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime();
-    my $daynumber = $wday + $daycount ;
-    if ($daycount eq 0)
-    {
-        $returnday = "today";
-    }
-    elsif ($daycount eq 1)
-    {
-        $returnday = "tomorrow";
-    }
-    elsif ($daynumber < 8)
-    {
-        $returnday = $days[$daynumber-1];
-    }
-    else {
-        $returnday = $days[$daynumber-7-1];
-    }
+	my $daycount = shift;
+	my $returnday;
+	my @days = ("mon","tue","wed","thu","fri","sat","sun");
+	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime();
+	my $daynumber = $wday + $daycount ;
+	if ($daycount eq 0)
+	{
+		$returnday = "today";
+	}
+	elsif ($daycount eq 1)
+	{
+		$returnday = "tomorrow";
+	}
+	elsif ($daynumber < 8)
+	{
+		$returnday = $days[$daynumber-1];
+	}
+	else
+	{
+		$returnday = $days[$daynumber-7-1];
+	}
 }
 
 sub getFVShowIcon
@@ -1404,164 +1403,168 @@ sub define_ABC_local_radio
 
 sub ABCgetchannels
 {
-        my $count = 0;
-        my @tmpdata;
-        foreach my $key (keys %ABCRADIO)
-        {
-                next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
-
-                $tmpdata[$count]->{name} = $ABCRADIO{$key}{name};
-                $tmpdata[$count]->{id} = $key.".yourtv.com.au";
-                $tmpdata[$count]->{lcn} = $key;
-                $tmpdata[$count]->{icon} = $ABCRADIO{$key}{iconurl};
-                $count++;
-        }
-        return @tmpdata;
+	my $count = 0;
+	my @tmpdata;
+	foreach my $key (keys %ABCRADIO)
+	{
+		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+		$tmpdata[$count]->{name} = $ABCRADIO{$key}{name};
+		$tmpdata[$count]->{id} = $key.".yourtv.com.au";
+		$tmpdata[$count]->{lcn} = $key;
+		$tmpdata[$count]->{icon} = $ABCRADIO{$key}{iconurl};
+		$count++;
+	}
+	return @tmpdata;
 }
 
 sub ABCgetepg
 {
-        my $ua = shift;
-        my $showcount = 0;
-        my @tmpguidedata;
-		warn("\nGetting epg for ABC Radio Stations ...\n") if ($VERBOSE);
-        foreach my $key (keys %ABCRADIO)
-        {
-                next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
-
-                my $id = $key;
-                warn("$ABCRADIO{$key}{name} ...\n") if ($VERBOSE);
-				next if ($ABCRADIO{$key}{servicename} eq "");
-                my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time-86400);
-                my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
-                my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
-                my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
-                my $url = URI->new( 'https://program.abcradio.net.au/api/v1/programitems/search.json' );
-                $url->query_form(service => $ABCRADIO{$key}{servicename}, limit => '100', order => 'asc', order_by => 'ppe_date', from => $startdate, to => $enddate);
-				my $res = geturl($ua,$url);
-                if (!$res->is_success)
+	my $ua = shift;
+	my $showcount = 0;
+	my @tmpguidedata;
+	warn("\nGetting epg for ABC Radio Stations ...\n") if ($VERBOSE);
+	foreach my $key (keys %ABCRADIO)
+	{
+		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+		my $id = $key;
+		warn("$ABCRADIO{$key}{name} ...\n") if ($VERBOSE);
+		next if ($ABCRADIO{$key}{servicename} eq "");
+		my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time-86400);
+		my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
+		my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2d.000Z",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
+		my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2d.000Z",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
+		my $url = URI->new( 'https://program.abcradio.net.au/api/v1/programitems/search.json' );
+		$url->query_form(service => $ABCRADIO{$key}{servicename}, limit => '100', order => 'asc', order_by => 'ppe_date', from => $startdate, to => $enddate);
+		my $res = geturl($ua,$url);
+		if (!$res->is_success)
+		{
+			warn("Unable to connect to ABC radio schedule: URL: $url. [" . $res->status_line . "]\n");
+			next;
+		}
+		my $tmpdata;
+		eval {
+			$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
+			1;
+		};
+		$tmpdata = $tmpdata->{items};
+		if (defined($tmpdata))
+		{
+			for (my $count = 0; $count < @$tmpdata; $count++)
+			{
+				$tmpguidedata[$showcount]->{id} = $key.".yourtv.com.au";
+				$tmpguidedata[$showcount]->{start} = $tmpdata->[$count]->{live}[0]->{start};
+				if (defined($tmpdata->[$count]->{live}[1]) )
 				{
-					warn("Unable to connect to ABC radio schedule: URL: $url. [" . $res->status_line . "]\n");
-					next;
+				     $tmpguidedata[$showcount]->{start} = toLocalTimeString($tmpdata->[$count]->{live}[1]->{start},'UTC');                                     
+				     my $duration = $tmpdata->[$count]->{live}[1]->{duration_seconds}/60;
+				     $tmpguidedata[$showcount]->{stop} = addTime($duration,$tmpguidedata[$showcount]->{start});                                     
 				}
-                my $tmpdata;
-                eval {
-                         $tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
-                        1;
-                };
-                $tmpdata = $tmpdata->{items};
-                if (defined($tmpdata))
-                {
-                        for (my $count = 0; $count < @$tmpdata; $count++)
-                        {
-                                $tmpguidedata[$showcount]->{id} = $key.".yourtv.com.au";
-                                $tmpguidedata[$showcount]->{start} = $tmpdata->[$count]->{live}[0]->{start};
-                                $tmpguidedata[$showcount]->{start} = toLocalTimeString($tmpdata->[$count]->{live}[0]->{start},'UTC');
-                                my $duration = $tmpdata->[$count]->{live}[0]->{duration_seconds}/60;
-                                $tmpguidedata[$showcount]->{stop} = addTime($duration,$tmpguidedata[$showcount]->{start});
-                                $tmpguidedata[$showcount]->{start} =~ s/[-T:]//g;
-                                $tmpguidedata[$showcount]->{start} =~ s/\+/ \+/g;
-                                $tmpguidedata[$showcount]->{stop} =~ s/[-T:]//g;
-                                $tmpguidedata[$showcount]->{stop} =~ s/\+/ \+/g;
-
-                                $tmpguidedata[$showcount]->{channel} = $ABCRADIO{$key}{name};
-                                $tmpguidedata[$showcount]->{title} = $tmpdata->[$count]->{title};
-                                my $catcount = 0;
-                                push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
-                                foreach my $tmpcat (@{$tmpdata->[$count]->{categories}})
-                                {
-									push(@{$tmpguidedata[$showcount]->{category}}, $tmpcat->{label});
-									$catcount++;
-								}
-								if (defined($tmpdata->[$count]->{short_synopsis}))
-								{
-									$tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{short_synopsis};
-								}
-								elsif (defined($tmpdata->[$count]->{mini_synopsis}))
-								{
-									$tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{mini_synopsis};
-								}
-								$showcount++;
-                        }
-                }
-        }
-        warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
-        return @tmpguidedata;
+				else
+				{
+				     $tmpguidedata[$showcount]->{start} = toLocalTimeString($tmpdata->[$count]->{live}[0]->{start},'UTC');
+				     my $duration = $tmpdata->[$count]->{live}[0]->{duration_seconds}/60;
+				     $tmpguidedata[$showcount]->{stop} = addTime($duration,$tmpguidedata[$showcount]->{start});                                                          
+				} 
+				$tmpguidedata[$showcount]->{start} =~ s/[-T:]//g;
+				$tmpguidedata[$showcount]->{start} =~ s/\+/ \+/g;
+				$tmpguidedata[$showcount]->{stop} =~ s/[-T:]//g;
+				$tmpguidedata[$showcount]->{stop} =~ s/\+/ \+/g;
+				$tmpguidedata[$showcount]->{channel} = $ABCRADIO{$key}{name};
+				$tmpguidedata[$showcount]->{title} = $tmpdata->[$count]->{title};
+				my $catcount = 0;
+				push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
+				foreach my $tmpcat (@{$tmpdata->[$count]->{categories}})
+				{
+					push(@{$tmpguidedata[$showcount]->{category}}, $tmpcat->{label});
+					$catcount++;
+				}
+				if (defined($tmpdata->[$count]->{short_synopsis}))
+				{
+					$tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{short_synopsis};
+				}
+				elsif (defined($tmpdata->[$count]->{mini_synopsis}))
+				{
+					$tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{mini_synopsis};
+				}
+				$showcount++;
+				}
+			}
+		}
+	warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
+	return @tmpguidedata;
 }
 
 sub SBSgetchannels
 {
-        my @tmpdata;
-        my $count = 0;
-        foreach my $key (keys %SBSRADIO)
-        {
-                next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
-
-                $tmpdata[$count]->{name} = $SBSRADIO{$key}{name};
-                $tmpdata[$count]->{id} = $key.".yourtv.com.au";
-                $tmpdata[$count]->{lcn} = $key;
-                $tmpdata[$count]->{icon} = $SBSRADIO{$key}{iconurl};
-                $count++;
-        }
-        return @tmpdata;
+	my @tmpdata;
+	my $count = 0;
+	foreach my $key (keys %SBSRADIO)
+	{
+		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+		$tmpdata[$count]->{name} = $SBSRADIO{$key}{name};
+		$tmpdata[$count]->{id} = $key.".yourtv.com.au";
+		$tmpdata[$count]->{lcn} = $key;
+		$tmpdata[$count]->{icon} = $SBSRADIO{$key}{iconurl};
+		$count++;
+	}
+	return @tmpdata;
 }
 
 sub SBSgetepg
 {
-        my $ua = shift;
-        my $showcount = 0;
-        my @tmpguidedata;
-		warn("\nGetting epg for SBS Radio Stations ...\n") if ($VERBOSE);
-        foreach my $key (keys %SBSRADIO)
-        {
-                next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+	my $ua = shift;
+	my $showcount = 0;
+	my @tmpguidedata;
+	warn("\nGetting epg for SBS Radio Stations ...\n") if ($VERBOSE);
+	foreach my $key (keys %SBSRADIO)
+	{
+		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+		my $id = $key;
+		warn("$SBSRADIO{$key}{name} ...\n") if ($VERBOSE);
+		my $now = time;;
+		my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time);
+		my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
+		my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
+		my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
 
-                my $id = $key;
-                warn("$SBSRADIO{$key}{name} ...\n") if ($VERBOSE);
-                my $now = time;;
-                my ($ssec,$smin,$shour,$smday,$smon,$syear,$swday,$syday,$sisdst) = localtime(time);
-                my ($esec,$emin,$ehour,$emday,$emon,$eyear,$ewday,$eyday,$eisdst) = localtime(time+(86400*$NUMDAYS));
-                my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
-                my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
-
-                my $url = "http://two.aim-data.com/services/schedule/sbs/".$SBSRADIO{$key}{servicename}."?days=".$NUMDAYS;
-				my $res = geturl($ua,$url);
-                if (!$res->is_success)
-				{
-					warn("Unable to connect to SBS radio schedule: URL: $url.. [" . $res->status_line . "]\n");
-					next;
-				}
-                my $data = $res->content;
-                my $tmpdata;
-                eval {
-                        $tmpdata = XMLin($data);
-                        1;
-                };
-                $tmpdata = $tmpdata->{entry};
-                if (defined($tmpdata))
-                {
-                        my $count = 0;
-                        foreach my $key (keys %$tmpdata)
-                        {
-                                $tmpguidedata[$showcount]->{id} = $id.".yourtv.com.au";
-                                $tmpguidedata[$showcount]->{start} = $tmpdata->{$key}->{start};
-                                $tmpguidedata[$showcount]->{start} =~ s/[-T:\s]//g;
-                                $tmpguidedata[$showcount]->{start} =~ s/(\+)/00 +/;
-                                $tmpguidedata[$showcount]->{stop} = $tmpdata->{$key}->{end};
-                                $tmpguidedata[$showcount]->{stop} =~ s/[-T:\s]//g;
-                                $tmpguidedata[$showcount]->{stop} =~ s/(\+)/00 +/;
-                                $tmpguidedata[$showcount]->{channel} = $SBSRADIO{$key}{name};
-                                $tmpguidedata[$showcount]->{title} = $tmpdata->{$key}->{title};
-                                my $catcount = 0;
-                                push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
-                                my $desc = $tmpdata->{$key}->{description};
-                                $tmpguidedata[$showcount]->{desc} = $tmpdata->{$key}->{description} if (!(ref $desc eq ref {}));
-                                $showcount++;
-                        }
-                }
-        }
-        warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
-        return @tmpguidedata;
+		my $url = "http://two.aim-data.com/services/schedule/sbs/".$SBSRADIO{$key}{servicename}."?days=".$NUMDAYS;
+		my $res = geturl($ua,$url);
+		if (!$res->is_success)
+		{
+			warn("Unable to connect to SBS radio schedule: URL: $url.. [" . $res->status_line . "]\n");
+			next;
+		}
+		my $data = $res->content;
+		my $tmpdata;
+		eval {
+			$tmpdata = XMLin($data);
+			1;
+		};
+		$tmpdata = $tmpdata->{entry};
+		if (defined($tmpdata))
+		{
+			my $count = 0;
+			foreach my $key (keys %$tmpdata)
+			{
+				$tmpguidedata[$showcount]->{id} = $id.".yourtv.com.au";
+				$tmpguidedata[$showcount]->{start} = $tmpdata->{$key}->{start};
+				$tmpguidedata[$showcount]->{start} =~ s/[-T:\s]//g;
+				$tmpguidedata[$showcount]->{start} =~ s/(\+)/00 +/;
+				$tmpguidedata[$showcount]->{stop} = $tmpdata->{$key}->{end};
+				$tmpguidedata[$showcount]->{stop} =~ s/[-T:\s]//g;
+				$tmpguidedata[$showcount]->{stop} =~ s/(\+)/00 +/;
+				$tmpguidedata[$showcount]->{channel} = $SBSRADIO{$key}{name};
+				$tmpguidedata[$showcount]->{title} = $tmpdata->{$key}->{title};
+				my $catcount = 0;
+				push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
+				my $desc = $tmpdata->{$key}->{description};
+				$tmpguidedata[$showcount]->{desc} = $tmpdata->{$key}->{description} if (!(ref $desc eq ref {}));
+				$showcount++;
+			}
+		}
+	}	
+	warn("Processed a total of $showcount shows ...\n") if ($VERBOSE);
+	return @tmpguidedata;
 }
 
 sub geturl
@@ -1571,7 +1574,7 @@ sub geturl
 	my $res;
 	my $retry = 1;
 	my $success = 0;
-    my $calling_sub = (caller(1))[3];
+	my $calling_sub = (caller(1))[3];
 	while (($retry <= $max_retries) and (!$success)) 
 	{
 		$res = $ua->get($url);
@@ -1586,15 +1589,15 @@ sub geturl
 		}
 		$retry++;
 	}
-    return $res;
+	return $res;
 }
 
 sub ToBoolean
 {
-    my $value = shift;
-    if (($value eq 1) or ($value =~ /^true$/i))
-    {
-        return 1;
-    }
-    return 0;
+	my $value = shift;
+	if (($value eq 1) or ($value =~ /^true$/i))
+	{
+		return 1;
+	}
+	return 0;
 }
