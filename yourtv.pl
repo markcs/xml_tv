@@ -1348,8 +1348,9 @@ sub usage
 {
 	@REGIONS = buildregions() if (!(@REGIONS));
 	return    "Usage:\n"
-		. "\t$0 --region=<region> [--output <filename>] [--days=<days to collect>] [--ignore=<channels to ignore>] [--include=<channels to include>] [--fvicons] [--pretty] [--paytv=<region number>] [--VERBOSE] [--log=<logfile name or directory>] [--help|?]\n"
+		. "\t$0 --config=<configuration filename> [ --region=<region> [--output <filename>] [--days=<days to collect>] [--ignore=<channels to ignore>] [--include=<channels to include>] [--fvicons] [--pretty] [--paytv=<region number>] [--VERBOSE] [--log=<logfile name or directory>] [--help|?] ]\n"
 		. "\n\tWhere:\n\n"
+		. "\t--config=<config filename>\tUse a configuration file. Refer to https://github.com/markcs/xml_tv/tree/master/configs/\n"
 		. "\t--region=<region>\t\tThis defines which tv guide to parse. It is mandatory. Refer below for a list of regions.\n"
 		. "\t--paytv=<paytv region number>\tDefines the pay tv guide to parse. Optional.\n"
 		. "\t--days=<days to collect>\tThis defaults to 7 days and can be no more than 7.\n"
