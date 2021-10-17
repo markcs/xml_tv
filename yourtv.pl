@@ -1369,7 +1369,7 @@ sub usage
 		. "\t--days=<days to collect>\tThis defaults to 7 days and can be no more than 7.\n"
 		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
 		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
-		. "\t--fileformat\t\t\tUsed together with output filename. 1 = uncompressed xml only, 2 = gzipped xml only, 3 = both uncompressed xml and gzipped xml\n"
+		. "\t--fileformat\t\t\tUsed together with output filename. 1 = uncompressed xml only (default), 2 = gzipped xml only, 3 = both uncompressed xml and gzipped xml\n"
 		. "\t--ignore=<channel to ignore>\tA comma separated list of channel numbers to ignore. The channel number is matched against the lcn tag within the xml.\n"
 		. "\t--duplicates <orig>=<ch1>,<ch2>\tOption may be specified more than once, this will create a guide where different channels have the same data.\n"
 		. "\t--include=<channel to include>\tA comma separated list of channel numbers to include. The channel number is matched against the lcn tag within the xml.\n"
