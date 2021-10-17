@@ -36,6 +36,7 @@ use Cwd qw( getcwd );
 use HTML::TableExtract;
 use DB_File;
 use Config::Tiny;
+use IO::Compress::Gzip;
 
 my %map = (
 	 '&' => 'and',
@@ -67,7 +68,7 @@ my (%dbm_hash, %thrdret);
 my (%fvdbm_hash, %fvthrdret);
 local (*DBMRO, *DBMRW);
 
-my ($configfile, $DEBUG, $VERBOSE, $log, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $paytv, $hdtvchannels, $REGION, $outputfile, $message, $help) = (undef, 0, 0, undef, 0, 0, 7, undef, undef, undef, undef, 0, undef ,undef, undef, undef);
+my ($configfile, $DEBUG, $VERBOSE, $log, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $paytv, $hdtvchannels, $REGION, $outputfile, $fileformat, $message, $help) = (undef, 0, 0, undef, 0, 0, 7, undef, undef, undef, undef, 0, undef ,undef, 1, undef, undef);
 GetOptions
 (
 	'config=s'			=> \$configfile,
@@ -90,6 +91,7 @@ GetOptions
 	'message=s'			=> \$message,
 	'duplicates=s'		=> \@dupes,
 	'changeyourtvlcn=s'	=> \@mapyourtvlcn,
+	'fileformat'		=> \$fileformat,
 	'help|?'			=> \$help,
 ) or die ("Syntax Error!  Try $0 --help");
 
@@ -187,6 +189,7 @@ if (defined($configfile)) {
 	$paytv = $Config->{main}->{paytv} if (defined($Config->{main}->{paytv}));
 	$hdtvchannels = $Config->{main}->{hdtv} if (defined($Config->{main}->{hdtv}));
 	$message = $Config->{main}->{message} if (defined($Config->{main}->{message}));
+	$fileformat = $Config->{main}->{fileformat} if (defined($Config->{main}->{fileformat}));
 	$MANUALICONS = $Config->{icons} if (defined($Config->{icons}));
 	if ((defined($Config->{mappingYourTVtoLCN})) and ((keys %{$Config->{mappingYourTVtoLCN}}) > 0))
 	{
@@ -443,10 +446,20 @@ if (!defined $outputfile)
 	print $XML;
 	print "\n" if ($pretty); # XML won't add a trailing newline
 } else {
-	warn("Writing xmltv guide to $outputfile...\n") if ($VERBOSE);
-	open FILE, ">$outputfile" or die("Unable to open $outputfile file for writing: $!\n");
-	print FILE $XML;
-	close FILE;
+	if (($fileformat == 1) || ($fileformat ==3))
+	{
+		warn("Writing xmltv guide to $outputfile...\n") if ($VERBOSE);
+		open FILE, ">$outputfile" or die("Unable to open $outputfile file for writing: $!\n");
+		print FILE $XML;
+		close FILE;
+	}
+	if (($fileformat == 2) || ($fileformat ==3))
+	{
+		warn("Writing xmltv guide to $outputfile.gz...\n") if ($VERBOSE);	
+		my $fh_gzip = IO::Compress::Gzip->new($outputfile.".gz");
+		print $fh_gzip $XML;
+		close $fh_gzip;
+	}
 	warn("Done!\n") if ($VERBOSE);
 }
 
@@ -1356,13 +1369,14 @@ sub usage
 		. "\t--days=<days to collect>\tThis defaults to 7 days and can be no more than 7.\n"
 		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
 		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
+		. "\t--fileformat\t\t\tUsed together with output filename. 1 = uncompressed xml only, 2 = gzipped xml only, 3 = both uncompressed xml and gzipped xml\n"
 		. "\t--ignore=<channel to ignore>\tA comma separated list of channel numbers to ignore. The channel number is matched against the lcn tag within the xml.\n"
 		. "\t--duplicates <orig>=<ch1>,<ch2>\tOption may be specified more than once, this will create a guide where different channels have the same data.\n"
 		. "\t--include=<channel to include>\tA comma separated list of channel numbers to include. The channel number is matched against the lcn tag within the xml.\n"
 		. "\t--extrachannels <region>-<ch1>,<ch2>\tThis will fetch EPG data for the channels specified from one other region.\n"
 		. "\t--mapyourtvlcn <lcn from YourTV>=<New lcn number>\tChange channel number from YourTV to a new channel number.\n"
 		. "\t--hdtv <ch1>,<ch2>....\tDefine which channels should be marked as HDTV.\n"
-		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"
+		. "\t--fvicons\t\t\tUse Freeview icons if they exist.\n"		
 		. "\t--verbose\t\t\tVerbose Mode (prints processing steps to STDERR).\n"
 		. "\t--debug\t\t\t\tOnly used for debugging purposes.\n"
 		. "\t--log <directory or filename>.\tThis can either be a directory path or a complete filename to store verbose or debug log output\n"
@@ -1447,24 +1461,38 @@ sub ABCgetepg
 			$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 			1;
 		};
-		$tmpdata = $tmpdata->{items};
+		$tmpdata = $tmpdata->{items};		
 		if (defined($tmpdata))
 		{
 			for (my $count = 0; $count < @$tmpdata; $count++)
 			{
 				$tmpguidedata[$showcount]->{id} = $key.".yourtv.com.au";
-				$tmpguidedata[$showcount]->{start} = $tmpdata->[$count]->{live}[0]->{start};
+				$tmpguidedata[$showcount]->{start} = $tmpdata->[$count]->{live}[0]->{start};				
 				if (defined($tmpdata->[$count]->{live}[1]) )
 				{
-				     $tmpguidedata[$showcount]->{start} = toLocalTimeString($tmpdata->[$count]->{live}[1]->{start},'UTC');                                     
-				     my $duration = $tmpdata->[$count]->{live}[1]->{duration_seconds}/60;
-				     $tmpguidedata[$showcount]->{stop} = addTime($duration,$tmpguidedata[$showcount]->{start});                                     
+				     $tmpguidedata[$showcount]->{start} = toLocalTimeString($tmpdata->[$count]->{live}[1]->{start},'UTC');
+					 if (defined($tmpdata->[$count]->{live}[1]->{end}))
+					 {
+						$tmpguidedata[$showcount]->{stop} = toLocalTimeString($tmpdata->[$count]->{live}[1]->{end},'UTC');
+					 }
+					 else
+					 {
+						my $duration = $tmpdata->[$count]->{live}[1]->{duration_seconds}/60;
+						$tmpguidedata[$showcount]->{stop} = addTime($duration,$tmpguidedata[$showcount]->{start});
+					 }	 
 				}
 				else
 				{
 				     $tmpguidedata[$showcount]->{start} = toLocalTimeString($tmpdata->[$count]->{live}[0]->{start},'UTC');
-				     my $duration = $tmpdata->[$count]->{live}[0]->{duration_seconds}/60;
-				     $tmpguidedata[$showcount]->{stop} = addTime($duration,$tmpguidedata[$showcount]->{start});                                                          
+					 if (defined($tmpdata->[$count]->{live}[0]->{end}))
+					 {
+						$tmpguidedata[$showcount]->{stop} = toLocalTimeString($tmpdata->[$count]->{live}[0]->{end},'UTC');
+					 }
+					 else
+					 {
+						my $duration = $tmpdata->[$count]->{live}[0]->{duration_seconds}/60;
+						$tmpguidedata[$showcount]->{stop} = addTime($duration,$tmpguidedata[$showcount]->{start});
+					 }					 
 				} 
 				$tmpguidedata[$showcount]->{start} =~ s/[-T:]//g;
 				$tmpguidedata[$showcount]->{start} =~ s/\+/ \+/g;
