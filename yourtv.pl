@@ -775,20 +775,20 @@ sub getepg
 								$guidedata[$showcount]->{channel} = $showdata->{service}->{description};
 								$guidedata[$showcount]->{title} = $showdata->{title};
 								$guidedata[$showcount]->{rating} = $showdata->{classification};
+								$guidedata[$showcount]->{quality} = "SDTV";
 								if ($showdata->{highDefinition})
 								{
 									$guidedata[$showcount]->{quality} = "HDTV";
 								}
 								else
-								{
-									$guidedata[$showcount]->{quality} = "SDTV";
-								}
-								foreach my $hdtvc (@hdtvchannels)
-								{
-									if ($guidedata[$showcount]->{id} =~ /$hdtvc\./)
+								{								
+									foreach my $hdtvc (@hdtvchannels)
 									{
-										$guidedata[$showcount]->{quality} = "HDTV";
-									}
+										if ($guidedata[$showcount]->{id} =~ /$hdtvc\./)
+										{
+											$guidedata[$showcount]->{quality} = "HDTV";
+										}
+									}								
 								}
 								if (defined($showdata->{program}->{image}))
 								{
