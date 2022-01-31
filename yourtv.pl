@@ -1556,38 +1556,39 @@ sub SBSgetepg
 		my $startdate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($syear+1900),$smon+1,$smday,$shour,$smin,$ssec);
 		my $enddate = sprintf("%0.4d-%0.2d-%0.2dT%0.2d:%0.2d:%0.2dZ",($eyear+1900),$emon+1,$emday,$ehour,$emin,$esec);
 
-		my $url = "http://two.aim-data.com/services/schedule/sbs/".$SBSRADIO{$key}{servicename}."?days=".$NUMDAYS;
+		my $url = "https://epgservice.c.aws.sbs.com.au/api/v1/radio-guide.json?channel=".$SBSRADIO{$key}{servicename}."&days=".$NUMDAYS;
 		my $res = geturl($ua,$url);
 		if (!$res->is_success)
 		{
 			warn("Unable to connect to SBS radio schedule: URL: $url.. [" . $res->status_line . "]\n");
 			next;
 		}
-		my $data = $res->content;
 		my $tmpdata;
-		eval {
-			$tmpdata = XMLin($data);
+		eval
+		{
+			$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 			1;
 		};
-		$tmpdata = $tmpdata->{entry};
+		$tmpdata = $tmpdata->{data};
 		if (defined($tmpdata))
 		{
 			my $count = 0;
-			foreach my $key (keys %$tmpdata)
+			for (my $count = 0; $count < @$tmpdata; $count++)
+			#foreach my $key (keys %$tmpdata)
 			{
 				$tmpguidedata[$showcount]->{id} = $id.".yourtv.com.au";
-				$tmpguidedata[$showcount]->{start} = $tmpdata->{$key}->{start};
+				$tmpguidedata[$showcount]->{start} = $tmpdata->[$count]->{start};
 				$tmpguidedata[$showcount]->{start} =~ s/[-T:\s]//g;
 				$tmpguidedata[$showcount]->{start} =~ s/(\+)/00 +/;
-				$tmpguidedata[$showcount]->{stop} = $tmpdata->{$key}->{end};
+				$tmpguidedata[$showcount]->{stop} = $tmpdata->[$count]->{end};
 				$tmpguidedata[$showcount]->{stop} =~ s/[-T:\s]//g;
 				$tmpguidedata[$showcount]->{stop} =~ s/(\+)/00 +/;
 				$tmpguidedata[$showcount]->{channel} = $SBSRADIO{$key}{name};
-				$tmpguidedata[$showcount]->{title} = $tmpdata->{$key}->{title};
+				$tmpguidedata[$showcount]->{title} = $tmpdata->[$count]->{title};
 				my $catcount = 0;
 				push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
-				my $desc = $tmpdata->{$key}->{description};
-				$tmpguidedata[$showcount]->{desc} = $tmpdata->{$key}->{description} if (!(ref $desc eq ref {}));
+				#my $desc = $tmpdata->[$count]->{description};
+				$tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{description};# if (!(ref $desc eq ref {}));
 				$showcount++;
 			}
 		}
