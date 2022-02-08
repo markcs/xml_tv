@@ -1423,6 +1423,7 @@ sub ABCgetchannels
 	foreach my $key (keys %ABCRADIO)
 	{
 		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+		next if ( ( !( grep( /^$key$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 		$tmpdata[$count]->{name} = $ABCRADIO{$key}{name};
 		$tmpdata[$count]->{id} = $key.".yourtv.com.au";
 		$tmpdata[$count]->{lcn} = $key;
@@ -1441,6 +1442,7 @@ sub ABCgetepg
 	foreach my $key (keys %ABCRADIO)
 	{
 		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+		next if ( ( !( grep( /^$key$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 		my $id = $key;
 		warn("$ABCRADIO{$key}{name} ...\n") if ($VERBOSE);
 		next if ($ABCRADIO{$key}{servicename} eq "");
@@ -1530,6 +1532,7 @@ sub SBSgetchannels
 	foreach my $key (keys %SBSRADIO)
 	{
 		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+		next if ( ( !( grep( /^$key$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 		$tmpdata[$count]->{name} = $SBSRADIO{$key}{name};
 		$tmpdata[$count]->{id} = $key.".yourtv.com.au";
 		$tmpdata[$count]->{lcn} = $key;
@@ -1548,6 +1551,7 @@ sub SBSgetepg
 	foreach my $key (keys %SBSRADIO)
 	{
 		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
+		next if ( ( !( grep( /^$key$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 		my $id = $key;
 		warn("$SBSRADIO{$key}{name} ...\n") if ($VERBOSE);
 		my $now = time;;
@@ -1574,20 +1578,18 @@ sub SBSgetepg
 		{
 			my $count = 0;
 			for (my $count = 0; $count < @$tmpdata; $count++)
-			#foreach my $key (keys %$tmpdata)
 			{
 				$tmpguidedata[$showcount]->{id} = $id.".yourtv.com.au";
 				$tmpguidedata[$showcount]->{start} = $tmpdata->[$count]->{start};
 				$tmpguidedata[$showcount]->{start} =~ s/[-T:\s]//g;
-				$tmpguidedata[$showcount]->{start} =~ s/(\+)/00 +/;
+				$tmpguidedata[$showcount]->{start} =~ s/(\+)/ +/;
 				$tmpguidedata[$showcount]->{stop} = $tmpdata->[$count]->{end};
 				$tmpguidedata[$showcount]->{stop} =~ s/[-T:\s]//g;
-				$tmpguidedata[$showcount]->{stop} =~ s/(\+)/00 +/;
+				$tmpguidedata[$showcount]->{stop} =~ s/(\+)/ +/;
 				$tmpguidedata[$showcount]->{channel} = $SBSRADIO{$key}{name};
 				$tmpguidedata[$showcount]->{title} = $tmpdata->[$count]->{title};
 				my $catcount = 0;
 				push(@{$tmpguidedata[$showcount]->{category}}, "Radio");
-				#my $desc = $tmpdata->[$count]->{description};
 				$tmpguidedata[$showcount]->{desc} = $tmpdata->[$count]->{description};# if (!(ref $desc eq ref {}));
 				$showcount++;
 			}
