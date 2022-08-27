@@ -14,6 +14,7 @@ my $MAX_THREADS = 7;
 
 use IO::Socket::SSL;
 my $FURL_OK = eval 'use Furl; 1';
+$FURL_OK = 0;
 if (!$FURL_OK)
 {
 	warn("Furl not found, falling back to LWP for fetching URLs (this will be slow)...\n");
