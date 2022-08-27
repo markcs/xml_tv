@@ -14,7 +14,6 @@ my $MAX_THREADS = 7;
 
 use IO::Socket::SSL;
 my $FURL_OK = eval 'use Furl; 1';
-$FURL_OK = 0;
 if (!$FURL_OK)
 {
 	warn("Furl not found, falling back to LWP for fetching URLs (this will be slow)...\n");
@@ -192,6 +191,7 @@ if (defined($configfile)) {
 	$message = $Config->{main}->{message} if (defined($Config->{main}->{message}));
 	$fileformat = $Config->{main}->{fileformat} if (defined($Config->{main}->{fileformat}));
 	$MANUALICONS = $Config->{icons} if (defined($Config->{icons}));
+	$MAX_THREADS = $Config->{main}->{threads} if (defined($Config->{main}->{threads}));
 	if ((defined($Config->{mappingYourTVtoLCN})) and ((keys %{$Config->{mappingYourTVtoLCN}}) > 0))
 	{
 		$YOURTVTOLCN = $Config->{mappingYourTVtoLCN};
