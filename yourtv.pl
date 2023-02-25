@@ -10,7 +10,7 @@ if ($threading_ok)
         use threads::shared;
 }
 
-my $MAX_THREADS = 7;
+my $MAX_THREADS = 2;
 
 use IO::Socket::SSL;
 my $FURL_OK = eval 'use Furl; 1';
@@ -191,6 +191,7 @@ if (defined($configfile)) {
 	$message = $Config->{main}->{message} if (defined($Config->{main}->{message}));
 	$fileformat = $Config->{main}->{fileformat} if (defined($Config->{main}->{fileformat}));
 	$MANUALICONS = $Config->{icons} if (defined($Config->{icons}));
+	$MAX_THREADS = $Config->{main}->{threads} if (defined($Config->{main}->{threads}));
 	if ((defined($Config->{mappingYourTVtoLCN})) and ((keys %{$Config->{mappingYourTVtoLCN}}) > 0))
 	{
 		$YOURTVTOLCN = $Config->{mappingYourTVtoLCN};
@@ -1263,40 +1264,22 @@ sub getFVShowIcon
 sub getFVInfo
 {
     $ua = shift;
-	my @fvregions = (
-		"region_national",
-		"region_nsw_sydney",
-		"region_nsw_newcastle",
-		"region_nsw_taree",
-		"region_nsw_tamworth",
-		"region_nsw_orange_dubbo_wagga",
-		"region_nsw_northern_rivers",
-		"region_nsw_wollongong",
-		"region_nsw_canberra",
-		"region_nt_regional",
-		"region_vic_albury",
-		"region_vic_shepparton",
-		"region_vic_bendigo",
-		"region_vic_melbourne",
-		"region_vic_ballarat",
-		"region_vic_gippsland",
-		"region_qld_brisbane",
-		"region_qld_goldcoast",
-		"region_qld_toowoomba",
-		"region_qld_maryborough",
-		"region_qld_widebay",
-		"region_qld_rockhampton",
-		"region_qld_mackay",
-		"region_qld_townsville",
-		"region_qld_cairns",
-		"region_sa_adelaide",
-		"region_sa_regional",
-		"region_wa_perth",
-		"region_wa_regional_wa",
-		"region_tas_hobart",
-		"region_tas_launceston",
-	);
+	my @fvregions = ();
 
+	#get region list from Freeview
+	my $fvurl = "https://www.freeview.com.au/tv-guide";
+	my $res = geturl($ua,$fvurl);
+	die("Unable to connect to FreeView (fvregion tvguide).\n") if (!$res->is_success);
+
+	my $data = $res->content;
+	$data =~ s/[\n\r]//g;
+	$data =~ s/.*__data=(.*);\s+window.prismi.*/$1/;
+	my $tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
+	for (my $regioncount = 0; $regioncount < @{$tmpchanneldata->{regions}->{list}->{items}}; $regioncount++)
+	{
+		push(@fvregions, $tmpchanneldata->{regions}->{list}->{items}->[$regioncount]->{id});
+	}
+		
 	foreach my $fvregion (@fvregions)
 	{
 		my $data;
