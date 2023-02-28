@@ -36,31 +36,29 @@ my $ua = LWP::UserAgent->new;
 $ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
 $ua->default_header( 'Accept-Charset' => 'utf-8');
 
-my ($configfile, $debug, $verbose, $log, $pretty, $fvregion, $postcode, $numdays, $outputfile, $apikey, $help) = (undef, 0, 0, undef, 1, undef, undef, 2, undef, undef, undef);
+my ($configfile, $debuglevel, $log, $pretty, $fvregion, $postcode, $numdays, $outputfile, $apikey, $help) = (undef, 0, undef, 1, undef, undef, 7, undef, undef, undef);
 GetOptions
 (
 	'config=s'			=> \$configfile,
-	'debug'				=> \$debug,
-	'verbose'			=> \$verbose,
+	'debuglevel=s'		=> \$debuglevel,
 	'log=s'				=> \$log,
 	'pretty'			=> \$pretty,
 	'region=s'			=> \$fvregion,
 	'postcode=s'		=> \$postcode,
 	'numdays=s'			=> \$numdays,
 	'file=s'			=> \$outputfile,
-        'api=s'				=> \$apikey,
+    'api=s'				=> \$apikey,
 	'help'				=> \$help,
 
 ) or die ("Syntax Error!  Try $0 --help");
 
-UsageAndHelp($ua) if ($help);
+UsageAndHelp($debuglevel, $ua) if ($help);
 
 if (defined($configfile)) {
 	$Config = Config::Tiny->read( $configfile );
 	die($Config::Tiny::errstr."\n") if ($Config::Tiny::errstr ne "");
 	$log = $Config->{main}->{log} if (defined($Config->{main}->{log}));
-	$debug = ToBoolean($Config->{main}->{debug}) if (defined($Config->{main}->{debug}));
-	$verbose = ToBoolean($Config->{main}->{verbose}) if (defined($Config->{main}->{verbose}));
+	$debuglevel = $Config->{main}->{debuglevel} if (defined($Config->{main}->{debuglevel}));	
 	$pretty = ToBoolean($Config->{main}->{pretty}) if (defined($Config->{main}->{pretty}));	
 	$numdays = $Config->{main}->{days} if (defined($Config->{main}->{days}));
 	$fvregion = $Config->{main}->{region} if (defined($Config->{main}->{region}));
@@ -96,12 +94,12 @@ if (defined($configfile)) {
 		@exclude_channels = split(/,/,$excludechannels);
 	}
 }
-if (!defined($apikey))
+
+if ( (!defined($apikey)) or (!defined($fvregion)) or (!defined($outputfile)) )
 {
-	die("API key not defined\n")
+	print "Incorrect options given\n";
+	UsageAndHelp($debuglevel, $ua);
 }
-
-
 
 if (defined($log))
 {
@@ -120,19 +118,18 @@ if (defined($log))
 	select $LOG;
 }
 
-warn("\nOptions...\nregion=$fvregion, output=$outputfile, days = $numdays, verbose = $verbose, pretty = $pretty, \n") if ($verbose);
-warn("log=$log\n") if (defined($log) and ($verbose));
+warn("\nOptions...\nregion=$fvregion, output=$outputfile, days = $numdays, debuglevel = $debuglevel, pretty = $pretty, \n") if ($debuglevel == 2);
+warn("log=$log\n") if (defined($log) and ($debuglevel == 2));
 
-warn("Getting Region Mapping...\n") if ($verbose);
-my $regioninfo = ABC_Get_Regions($ua,$fvregion);
+warn("Getting Region Mapping...\n") if ($debuglevel == 2);
+my $regioninfo = ABC_Get_Regions($debuglevel, $ua,$fvregion);
 
-
-warn("Getting EPG from abc.net.au ...\n") if ($verbose);
+warn("Getting EPG from abc.net.au ...\n") if ($debuglevel == 2);
 
 my @ABC_epg = ABC_Get_EPG($ua,$regioninfo,$numdays);
-warn("Getting FV and TTV channel list...\n") if ($verbose);
+warn("Getting FV and TTV channel list...\n") if ($debuglevel == 2);
 
-warn("Getting TTV EPG...\n") if ($verbose);
+warn("Getting TTV EPG...\n") if ($debuglevel == 2);
 #my @TTV_epg = TTV_Get_EPG($ua, $combined_triplets, $numdays);
 #my ($TTV_channels, $TTV_epg) = TTV_Get_EPG_web($ua, 'postcode', $postcode, $numdays);
 my ($TTV_channels, $TTV_epg) = TTV_Get_EPG($ua, $apikey, 'postcode', $postcode, $numdays);
@@ -141,7 +138,7 @@ warn("Got ".scalar(@$TTV_channels)." channels and ".scalar(@$TTV_epg)." shows ..
 #my ($TTV_channels, $TTV_epg) = TTV_Get_EPG_web($ua, 'postcode', $postcode, $numdays);
 my @FV_channels =  getFVInfo($ua, $fvregion);
 
-warn("Getting missing channels end EPG...\n") if ($verbose);
+warn("Getting missing channels end EPG...\n") if ($debuglevel == 2);
 #my ($missing_channels, $missing_epg) = get_missing_channels_epg(\@FV_channels, $TTV_channels, $numdays);
 my ($missing_channels, $missing_epg) = get_missing_channels_epg(\@FV_channels, $TTV_channels, $numdays);
 my @complete_channels = ( @$TTV_channels, @$missing_channels );
@@ -149,7 +146,7 @@ my @complete_epg = ( @$TTV_epg, @$missing_epg );
 
 warn("Got ".scalar(@complete_channels)." channels and ".scalar(@complete_epg)." shows ..\n");
 
-warn("Adding extra channels from config file.. \n") if ($verbose);
+warn("Adding extra channels from config file.. \n") if ($debuglevel == 2);
 my ($extra_added_channels, $extra_added_epg) = add_extra_channels($extra_channels, \@complete_channels, $numdays);
 
 @complete_channels = ( @complete_channels, @$extra_added_channels );
@@ -157,30 +154,30 @@ my ($extra_added_channels, $extra_added_epg) = add_extra_channels($extra_channel
 
 warn("Got ".scalar(@complete_channels)." channels and ".scalar(@complete_epg)." shows ..\n");
 
-warn("Combining ABC and TTV EPG... (this may take some time)\n") if ($verbose);
+warn("Combining ABC and TTV EPG... (this may take some time)\n") if ($debuglevel == 2);
 my @combined_epg = Combine_epg(\@complete_channels, \@complete_epg, \@ABC_epg);
 
 warn("Got ".scalar(@complete_channels)." channels and ".scalar(@combined_epg)." shows ..\n");
 
-warn("Getting radio channels and EPG ... \n") if ($verbose);
+warn("Getting radio channels and EPG ... \n") if ($debuglevel == 2);
 #push(@complete_channels,radio_SBSgetchannels());
 #push(@complete_channels,radio_ABCgetchannels($regioninfo));
 
 #push(@combined_epg,radio_ABCgetepg($ua,$numdays));
 #push(@combined_epg,radio_SBSgetepg($ua,$numdays));
 
-warn("Duplicating Channels...\n") if ($verbose);
+warn("Duplicating Channels...\n") if ($debuglevel == 2);
 my @duplicated_channels = duplicate_channels(\@complete_channels,$duplicated_channels);
 my @duplicated_epg = duplicate_epg(\@combined_epg,$duplicated_channels);
 
 warn("Got ".scalar(@duplicated_channels)." channels and ".scalar(@duplicated_epg)." shows ..\n");
 
-warn("Removing excluded channels and EPG..\n") if ($verbose);
+warn("Removing excluded channels and EPG..\n") if ($debuglevel == 2);
 my ($final_channels, $final_epg) = remove_exclude_channels(\@duplicated_channels, \@duplicated_epg, \@exclude_channels);
 
 warn("Got ".scalar(@$final_channels)." channels and ".scalar(@$final_epg)." shows ..\n");
 
-warn("Build EPG and exit..\n") if ($verbose);
+warn("Build EPG and exit..\n") if ($debuglevel == 2);
 #buildXML(\@duplicated_channels, \@duplicated_epg, $identifier, $pretty);
 buildXML($final_channels, $final_epg, $identifier, $pretty);
 
@@ -207,7 +204,7 @@ sub Combine_epg
 			{ 
 				if ($shownamecomparison > 0.6)
 				{
-					print "MATCHED (channel $epg1->[$ttv_show_count]->{lcn}) $epg1->[$ttv_show_count]->{title} eq $epg2->[$abc_show_count]->{title} ($shownamecomparison)\n" if ($debug);
+					print "MATCHED (channel $epg1->[$ttv_show_count]->{lcn}) $epg1->[$ttv_show_count]->{title} eq $epg2->[$abc_show_count]->{title} ($shownamecomparison)\n" if ($debuglevel);
 					$epg1->[$ttv_show_count]->{repeat} = $epg2->[$abc_show_count]->{repeat} if (defined($epg2->[$abc_show_count]->{repeat}));
 					$epg1->[$ttv_show_count]->{subtitle} = $epg2->[$abc_show_count]->{subtitle} if (defined($epg2->[$abc_show_count]->{subtitle}));
 					$epg1->[$ttv_show_count]->{originalairdate} = $epg2->[$abc_show_count]->{originalairdate} if (defined($epg2->[$abc_show_count]->{originalairdate}));
@@ -235,14 +232,14 @@ sub Combine_epg
 		}
 		if (!$programmatch)
 		{
-				print "NOT MATCHED to ABC EPG -> channel $epg1->[$ttv_show_count]->{lcn} show = $epg1->[$ttv_show_count]->{title} \t\tat $epg1->[$ttv_show_count]->{start}\n" if ($debug);;
+				print "NOT MATCHED to ABC EPG -> channel $epg1->[$ttv_show_count]->{lcn} show = $epg1->[$ttv_show_count]->{title} \t\tat $epg1->[$ttv_show_count]->{start}\n" if ($debuglevel);;
 				$unmatchedprograms++;
 				#print Dumper $epg1->[$ttv_show_count];
 				#<STDIN>;
 		}
 		push(@newepg, @$epg1[$ttv_show_count]);
 	}
-	print "$matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n" if ($debug);
+	print "$matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n" if ($debuglevel);
 	return @newepg;
 }
 
@@ -267,11 +264,11 @@ sub geturl
 		$res = $ua->get($url, @lwp_headers);
 		if (!$res->is_success)
 		{
-			warn("($calling_sub) Try $retry: Unable to connect to $url (".$res->code.")\n") if ($verbose);
+			warn("($calling_sub) Try $retry: Unable to connect to $url (".$res->code.")\n") if ($debuglevel == 2);
 		}
 		else 
 		{
-			warn("($calling_sub) Try $retry: Success for $url...\n") if ((($verbose) and ($retry > 1)) or ($debug));
+			warn("($calling_sub) Try $retry: Success for $url...\n") if ((($debuglevel == 2) and ($retry > 1)) or ($debuglevel));
 			return $res;
 		}
 		$retry++;
@@ -282,7 +279,7 @@ sub geturl
 sub buildXML
 {
 	my ($channels, $epg, $identifier, $pretty) = @_;
-	warn("Starting to build the XML...\n") if ($verbose);
+	warn("Starting to build the XML...\n") if ($debuglevel == 2);
 	my $message = "http://xmltv.net";
 
 	my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
@@ -290,16 +287,16 @@ sub buildXML
 	$XML->doctype("tv", undef, "xmltv.dtd");
 	$XML->startTag('tv', 'source-info-name' => $message, 'generator-info-url' => "http://www.xmltv.org/");
 
-	warn("Building the channel list...\n") if ($verbose);
+	warn("Building the channel list...\n") if ($debuglevel == 2);
 	printchannels($channels, $identifier, \$XML);
 	printepg($epg, $identifier, \$XML);
-	warn("Finishing the XML...\n") if ($verbose);
+	warn("Finishing the XML...\n") if ($debuglevel == 2);
 	$XML->endTag('tv');
-	warn("Writing xmltv guide to $outputfile...\n") if ($verbose);
+	warn("Writing xmltv guide to $outputfile...\n") if ($debuglevel == 2);
 	open FILE, ">$outputfile" or die("Unable to open $outputfile file for writing: $!\n");
 	print FILE $XML;
 	close FILE;
-	warn("Writing xmltv guide to $outputfile.gz...\n") if ($verbose);	
+	warn("Writing xmltv guide to $outputfile.gz...\n") if ($debuglevel == 2);	
 	my $fh_gzip = IO::Compress::Gzip->new($outputfile.".gz");
 	print $fh_gzip $XML;
 	close $fh_gzip;	
@@ -476,7 +473,7 @@ sub get_missing_channels_epg
 		}
 		if (!$lcnfound)
 		{
-			print "Channel @$fv_channels[$fv_count]->{lcn} (@$fv_channels[$fv_count]->{name}) @$fv_channels[$fv_count]->{triplet} not found. Adding .....\n" if ($debug);
+			print "Channel @$fv_channels[$fv_count]->{lcn} (@$fv_channels[$fv_count]->{name}) @$fv_channels[$fv_count]->{triplet} not found. Adding .....\n" if ($debuglevel);
 			$missing_triplets = $missing_triplets.@$fv_channels[$fv_count]->{triplet}.",";
 		}
 	}
@@ -526,7 +523,7 @@ sub add_extra_channels
 		}
 		if (!$lcnfound)
 		{
-			print "Extra channel $lcn added\n" if ($debug);
+			print "Extra channel $lcn added\n" if ($debuglevel);
 			($TTV_channels, $TTV_epg) = TTV_Get_EPG($ua, $apikey, 'triplets', $value, $numdays, $lcn) ;
 			@combined_channels = ( @combined_channels, @$TTV_channels );
 			@combined_epg = ( @combined_epg, @$TTV_epg );
@@ -648,9 +645,9 @@ sub ToBoolean
 
 sub UsageAndHelp
 {
-	my $ua = shift;
-	my $regioninfo = ABC_Get_Regions($ua,'help');
-	my $configurl = "https://raw.githubusercontent.com/markcs/xml_tv/master/configs/Melbourne.conf";
+	my ($debuglevel, $ua) = @_;
+	my $regioninfo = ABC_Get_Regions($debuglevel, $ua,'help');
+	my $configurl = "https://raw.githubusercontent.com/markcs/xml_tv/markcs-testing/au_epg/configs/Melbourne_auepg.conf";
 	my $result = geturl($ua,$configurl);
 	my $configdefinition = $result->content;
 	$configdefinition =~ s/\n/\n\t/g;

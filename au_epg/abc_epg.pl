@@ -3,113 +3,83 @@ use strict;
 use warnings;
 use DateTime;
 use Gzip::Faster;
-#use JSON::Relaxed;
-
-
-
 
 sub ABC_Get_Regions
 {
-	my ($ua, $fvregion) = @_;
-	my %tzmapping =  ( 
-		'Sydney' => 'Australia/Sydney',
-		'New South Wales' => 'Australia/Sydney',
-    	'Melbourne' => 'Australia/Melbourne',
-		'Victoria' => 'Australia/Victoria',
-        'Brisbane' => 'Australia/Brisbane',
-        'Townsville' => 'Australia/Brisbane',
-        'GoldCoast' => 'Australia/Brisbane',
-        'Queensland' => 'Australia/Brisbane',
-        'Perth' => 'Australia/Perth',
-        'Western Australia' => 'Australia/Perth',
-        'Adelaide' => 'Australia/Adelaide',
-        'South Australia' => 'Australia/Adelaide',					
-        'Hobart' => 'Australia/Hobart',
-        'Tasmania' => 'Australia/Hobart',
-        'Darwin' => 'Australia/Darwin',
-        'Northern Territory' => 'Australia/Darwin',
-        'Canberra' => 'Australia/Canberra',
+	my ($debuglevel, $ua, $fvregion) = @_;
+	my @fvregions = ();
+	my $return_json;
+	my %state_mapping =  ( 
+		'TAS' => 'Tasmania',
+		'QLD' => 'Queensland',
+		'NSW' => 'New South Wales',
+		'SA' => 'South Australia',
+		'NT' => 'Northern Territory',
+		'WA' => 'Western Australia',
+		'ACT' => 'Canberra',
+		'VIC' => 'Victoria',
 	);
+	#get region list from Freeview
+	my $fvurl = "https://freeview.com.au/tv-guide";
+	my $res = geturl($ua,$fvurl);
+	die("Unable to connect to FreeView to get regions (ABC_Get_Regions).\n") if (!$res->is_success);
 
-	my %fvregionmapping1 = 
-	(
-		"region_nsw_sydney" => 'Sydney',
-		"region_nsw_newcastle" => 	'New South Wales',
-		"region_nsw_taree" => 	'New South Wales',
-		"region_nsw_tamworth" => 	'New South Wales',
-		"region_nsw_orange_dubbo_wagga" => 	'New South Wales',
-		"region_nsw_northern_rivers" => 	'New South Wales',
-		"region_nsw_wollongong" => 	'New South Wales',
-		"region_nsw_canberra" => 	'Canberra',
-		"region_nt_regional" => 	'Northern Territory',
-		"region_vic_albury" => 	'Victoria',
-		"region_vic_shepparton" => 	'Victoria',
-		"region_vic_bendigo" => 	'Victoria',
-		"region_vic_melbourne" => 	'Melbourne',
-		"region_vic_ballarat" => 	'Victoria',
-		"region_vic_gippsland" => 	'Victoria',
-		"region_qld_brisbane" => 	'Brisbane',
-		"region_qld_goldcoast" => 	'GoldCoast',
-		"region_qld_toowoomba" => 	'Queensland',
-		"region_qld_maryborough" => 	'Queensland',
-		"region_qld_widebay" => 	'Queensland',
-		"region_qld_rockhampton" => 	'Queensland',
-		"region_qld_mackay" => 	'Queensland',
-		"region_qld_townsville" => 	'Townsville',
-		"region_qld_cairns" => 	'Queensland',
-		"region_sa_adelaide" => 	'Adelaide',
-		"region_sa_regional" => 	'South Australia',
-		"region_wa_perth" => 	'Perth',
-		"region_wa_regional_wa" => 	'Western Australia',
-		"region_tas_hobart" => 	'Hobart',
-		"region_tas_launceston" => 	'Tasmania',
-
-	);
+	my $data = $res->content;
+	$data =~ s/[\n\r]//g;
+	$data =~ s/.*__data=(.*);\s+window.prismi.*/$1/;
+	my $fvchannelinfo = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 
 	my $url = "https://www.abc.net.au/tv/gateway/release/js/core.min.js";
-	my $res = geturl($ua,$url,3);
+	$res = geturl($ua,$url,3);
 	die("Unable to connect to ABC (buildregions).\n") if (!$res->is_success);
-	my $data = $res->content;
+	$data = $res->content;
 	$data =~ s/\R//g;
 	$data =~ s/.*constant\(\"tvSettings\",(.*)\),angular.module\(\"tvGuideApp\"\).*/$1/;	
 	$data =~ s/,is_state:\!.}/}/g;
 	$data =~ s/\W(\w)\W/\"$1\"/g;
 	$data =~ s/([^\s\"A-Za-z0-9\!])([A-Za-z0-9_\!]+)([^\s\"A-Za-z0-9\!])/$1\"$2\"$3/g;
-	my $region_json = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
-	#print Dumper $region_json;
-	$region_json = $region_json->{regions};
-	my $return_json;
-	my $regioncount = 0;
-	while (my ($region, $state) = each %fvregionmapping1)
+	my $abc_region_json = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
+
+	if ($fvregion eq 'help')
 	{
-		if ($fvregion eq $region)
+		for (my $fv_count = 0; $fv_count < @{$fvchannelinfo->{regions}->{list}->{items}}; $fv_count++)
 		{
-			$return_json->{id} = $state;
-			$return_json->{fvregion} = $region;
-			for (my $count = 0; $count < @$region_json; $count++)
+			$return_json->[$fv_count]->{fvregion} = $fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{id};			
+		}
+	}
+	else
+	{
+		for (my $fv_count = 0; $fv_count < @{$fvchannelinfo->{regions}->{list}->{items}}; $fv_count++)
+		{
+			my $found = 0;
+			my $region_json;
+			print "$fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{id} <> $fvregion\n" if ($debuglevel == 2);
+			if ($fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{id} eq $fvregion)
 			{
-				if ($region_json->[$count]->{id} eq $state )
+				$return_json->{timezone} = $fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{timezone};
+				$return_json->{fvregion} = $fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{id};
+				$return_json->{label} = $fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{label};
+				my $state = uc($fvregion);
+				$state =~ s/REGION_(.*?)_(.*)/$1/;
+				my $city = $2;
+				print "state = $state city = $city\n" if ($debuglevel == 2);
+				for (my $abc_region_count = 0; $abc_region_count < scalar(@{$abc_region_json->{regions}}); $abc_region_count++)
 				{
-					$return_json->{timezone} = $tzmapping{$region_json->[$count]->{id}};			
-					$return_json->{title} = $region_json->[$count]->{title};
+					print uc($abc_region_json->{regions}->[$abc_region_count]->{id})." = ".$city."\n" if ($debuglevel == 2);
+					if (uc($abc_region_json->{regions}->[$abc_region_count]->{id}) eq $city)
+					{
+						$return_json->{id} = $abc_region_json->{regions}->[$abc_region_count]->{id};
+						$found = 1;
+					}
+				}
+				if (!$found)
+				{
+					$return_json->{id} = $state_mapping{$state};
 				}
 			}
 		}
-		elsif ($fvregion eq 'help')
-		{
-			$return_json->[$regioncount]->{id} = $state;
-			$return_json->[$regioncount]->{fvregion} = $region;
-			for (my $count = 0; $count < @$region_json; $count++)
-			{
-				if ($region_json->[$count]->{id} eq $state )
-				{
-					$return_json->[$regioncount]->{timezone} = $tzmapping{$region_json->[$count]->{id}};			
-					$return_json->[$regioncount]->{title} = $region_json->[$count]->{title};
-				}
-			}			
-		}
-		$regioncount++;
 	}
+	print Dumper $return_json if ($debuglevel == 2);
 	return $return_json;
 }
 
@@ -133,7 +103,7 @@ sub ABC_Get_EPG
 		my $data = $res->content;
 		if (!$res->is_success)
 		{
-			die("\n(getepg) FATAL: Unable to connect to YourTV for $url (".$res->{code}.")\n");
+			die("\n(getepg) FATAL: Unable to connect to ABC for $url (".$res->{code}.")\n");
 		}
 		my $content_encoding = $res->header ('Content-Encoding');
 		if ($content_encoding eq 'gzip')
@@ -151,7 +121,6 @@ sub ABC_Get_EPG
 	}
 	my $programcount = 0;
 	my @guidedata;
-	#print "ABCEPG\n";print Dumper @epg;
     for (my $epgdays = 0; $epgdays < @epg; $epgdays++)
     {
 		my $Tformat = DateTime::Format::Strptime->new( pattern => '%Y-%m-%dT%H:%M:%S', time_zone => $abc_region_tz);
@@ -229,40 +198,6 @@ sub ABC_Get_EPG
 	}
 	#print Dumper @guidedata;
 	return @guidedata;
-}
-
-sub ABC_Get_EPGold1
-{
-	my ($ua, $region, $numdays) = @_;
-	my $dt = DateTime->now;
-	$dt->set_time_zone('Australia/Sydney');
-
-	my @epg;
-	for (my $day = 0; $day < $numdays; $day++)
-	{
-		my $date = $dt->ymd;
-		my $url = "https://epg.abctv.net.au/processed/".$region."_".$date.".json";
-		my $res = geturl($ua,$url,3);
-		my $data = $res->content;
-		if (!$res->is_success)
-		{
-			die("\n(getepg) FATAL: Unable to connect to YourTV for $url (".$res->{code}.")\n");
-		}
-		my $content_encoding = $res->header ('Content-Encoding');
-		if ($content_encoding eq 'gzip')
-		{
-			$data = gunzip ($res->content);
-		}		
-		my $tmpdata;
-		eval
-		{
-			$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
-			1;
-		};
-		push(@epg,$tmpdata);
-		$dt->add( days => 1 );
-	}
-	return @epg;
 }
 
 sub toLocalTimeString
