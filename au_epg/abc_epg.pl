@@ -80,6 +80,12 @@ sub ABC_Get_Regions
 		}
 	}
 	print Dumper $return_json if ($debuglevel == 2);
+	if ($fvregion ne "help")
+	{
+		if ((!defined($return_json->{id})) or (!defined($return_json->{timezone})) or (!defined($return_json->{fvregion}) ))
+	{
+		die("Incorrect region supplied -> $fvregion");
+	}}
 	return $return_json;
 }
 
