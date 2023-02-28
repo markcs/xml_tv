@@ -118,8 +118,9 @@ if (defined($log))
 	select $LOG;
 }
 
-warn("\nOptions...\nregion=$fvregion, output=$outputfile, days = $numdays, debuglevel = $debuglevel, pretty = $pretty, \n") if ($debuglevel == 2);
-warn("log=$log\n") if (defined($log) and ($debuglevel == 2));
+warn("\nOptions...\n\tregion=$fvregion\n\tpostcode=$postcode\n\toutput=$outputfile\n\tdays = $numdays\n\tdebuglevel = $debuglevel\n\tapi=$apikey\n\tpretty = $pretty\n") if ($debuglevel == 2);
+
+warn("\tlog=$log\n") if (defined($log) and ($debuglevel == 2));
 
 warn("Getting Region Mapping...\n") if ($debuglevel == 2);
 my $regioninfo = ABC_Get_Regions($debuglevel, $ua,$fvregion);
