@@ -566,6 +566,7 @@ sub duplicate_channels
 
 				#$tmpchannel->{id} =  $duplcn.".epg.com.au";
 				$tmpchannel->{lcn} = $duplcn;
+				$tmpchannel->{epg_id} = $duplcn."-".$tmpchannel->{epg_id};
 				#$tmpchannel->{id} =  $duplicate_channels->{@$channels[$chancount]->{lcn}}.".epg.com.au";
 				#$tmpchannel->{lcn} = $duplicate_channels->{@$channels[$chancount]->{lcn}};
 
@@ -595,6 +596,7 @@ sub duplicate_epg
 			
 				#$tmpchannel->{id} =  $duplcn.".epg.com.au";
 				$tmpchannel->{lcn} = $duplcn;
+				$tmpchannel->{epg_id} = $duplcn."-".$tmpchannel->{epg_id};
 				push(@duplicate_epg,$tmpchannel);
 			}
 		}
