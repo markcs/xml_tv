@@ -103,9 +103,25 @@ sub fetch_region_channels
     return @returnchannels;
 
 }
+
+sub fetch_epgid_to_lcn
+{
+    my ($channellist, $epgid) = @_;
+    my $lcn;
+    foreach my $channel (@$channellist)
+    {   
+        if ($channel->{epg_id} eq $epgid)
+        {
+            return $channel->{lcn};
+        }
+        
+    }
+    return 0;    
+}
+
 sub fetch_programlist
 {
-    my ($ua, $all_channels, $region, $numdays) = @_;
+    my ($debuglevel, $ua, $all_channels, $region, $numdays) = @_;
 
     my $epg_ids = fetch_region_epgids($all_channels, $region);
     $epg_ids =~ s/,/%2C/g;
@@ -118,63 +134,64 @@ sub fetch_programlist
     for (my $blockcount = 0;$blockcount < $numdays*4 ; $blockcount++)
     {
         my $blocknum = int($epoch_time_now/86400*6) + $blockcount;
-    my $block = "4-".$blocknum;
-    my $url = "https://www.fetchtv.com.au/v2/epg/programslist?channel_ids=".$epg_ids."&block=".$block."&count=2&extended=1";
-    print $url;
-    my $res = geturl($ua,$url,1);
-    my $data = $res->content;
-    my $tmpdata;
+        my $block = "4-".$blocknum;
+        my $url = "https://www.fetchtv.com.au/v2/epg/programslist?channel_ids=".$epg_ids."&block=".$block."&count=2&extended=1";
+        my $res = geturl($ua,$url,1);
+        my $data = $res->content;
+        my $tmpdata;
 
-	eval
-	{
-		$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
-		1;
-	};
-    for( my $fieldcount = 0; $fieldcount < @{$tmpdata->{__meta__}->{program_fields}}; $fieldcount++ )
-    {
-        $program_fields->{$tmpdata->{__meta__}->{program_fields}[$fieldcount]} = $fieldcount;
-    }
-    foreach my $channel_number (keys %{$tmpdata->{channels}} )
-    {
-        my $channeldata = $tmpdata->{channels}{$channel_number};
-        foreach my $programdata (@{$tmpdata->{channels}{$channel_number}})
+	    eval
         {
+    	    $tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
+    	    1;
+        };
+        print Dumper $tmpdata if ($debuglevel >= 3);
+        for( my $fieldcount = 0; $fieldcount < @{$tmpdata->{__meta__}->{program_fields}}; $fieldcount++ )
+        {
+            $program_fields->{$tmpdata->{__meta__}->{program_fields}[$fieldcount]} = $fieldcount;
+        }
+        foreach my $channel_number (keys %{$tmpdata->{channels}} )
+        {
+            my $channeldata = $tmpdata->{channels}{$channel_number};
+            foreach my $programdata (@{$tmpdata->{channels}{$channel_number}})
+            {
 
-            $guidedata[$programcount]->{title} = $programdata->[$program_fields->{title}];
-            $guidedata[$programcount]->{epg_id} = $channel_number;
-            $guidedata[$programcount]->{start_seconds} = $programdata->[$program_fields->{start}] / 1000;
-            $guidedata[$programcount]->{stop_seconds} = $programdata->[$program_fields->{end}] / 1000;
-            if ( defined($program_fields->{sypnosis_id}) and ($program_fields->{sypnosis_id} ne "") and defined($tmpdata->{synopses}->{$programdata->[$program_fields->{sypnosis_id}]}) and ($tmpdata->{synopses}->{$programdata->[$program_fields->{sypnosis_id}]} ne "") )
-            {
-                $guidedata[$programcount]->{desc} = $tmpdata->{synopses}->{$programdata->[$program_fields->{sypnosis_id}]};
-            }
-            $guidedata[$programcount]->{category} = $programdata->[$program_fields->{genre}];
-            my $startdt = DateTime->from_epoch( epoch => $guidedata[$programcount]->{start_seconds}, time_zone => 'UTC' );
-            my $stopdt = DateTime->from_epoch( epoch => $guidedata[$programcount]->{stop_seconds}, time_zone => 'UTC' );
-            $guidedata[$programcount]->{start} = $startdt->ymd('').$startdt->hms('')." +0000";
-            $guidedata[$programcount]->{stop} = $stopdt->ymd('').$stopdt->hms('')." +0000";
-        
-            if (defined($programdata->[$program_fields->{episode_no}]) and ($programdata->[$program_fields->{episode_no}] ne "") )
-            {
-                $guidedata[$programcount]->{episode} = $programdata->[$program_fields->{episode_no}];
-                $guidedata[$programcount]->{originalairdate} = $startdt->ymd('-'); 
-            }
-            if (defined($programdata->[$program_fields->{series_no}]) and ($programdata->[$program_fields->{series_no}] ne "") )
-            {
-                $guidedata[$programcount]->{season} = $programdata->[$program_fields->{series_no}];
-            }
-            if (($programdata->[$program_fields->{series_no}] eq "") and ($programdata->[$program_fields->{episode_no}] ne ""))
-            {
-                $guidedata[$programcount]->{season} = $startdt->year();
-            }
+               $guidedata[$programcount]->{title} = $programdata->[$program_fields->{title}];
+               $guidedata[$programcount]->{epg_id} = $channel_number;
+               $guidedata[$programcount]->{lcn} = fetch_epgid_to_lcn($all_channels, $channel_number);
+               $guidedata[$programcount]->{start_seconds} = $programdata->[$program_fields->{start}] / 1000;
+               $guidedata[$programcount]->{stop_seconds} = $programdata->[$program_fields->{end}] / 1000;
+               if ( defined($program_fields->{sypnosis_id}) and ($program_fields->{sypnosis_id} ne "") and defined($tmpdata->{synopses}->{$programdata->[$program_fields->{sypnosis_id}]}) and ($tmpdata->{synopses}->{$programdata->[$program_fields->{sypnosis_id}]} ne "") )
+               {
+                   $guidedata[$programcount]->{desc} = $tmpdata->{synopses}->{$programdata->[$program_fields->{sypnosis_id}]};
+               }
+               $guidedata[$programcount]->{category} = $programdata->[$program_fields->{genre}];
+               my $startdt = DateTime->from_epoch( epoch => $guidedata[$programcount]->{start_seconds}, time_zone => 'UTC' );
+               my $stopdt = DateTime->from_epoch( epoch => $guidedata[$programcount]->{stop_seconds}, time_zone => 'UTC' );
+               $guidedata[$programcount]->{start} = $startdt->ymd('').$startdt->hms('')." +0000";
+               $guidedata[$programcount]->{stop} = $stopdt->ymd('').$stopdt->hms('')." +0000";
+
+               if (defined($programdata->[$program_fields->{episode_no}]) and ($programdata->[$program_fields->{episode_no}] ne "") )
+               {
+                   $guidedata[$programcount]->{episode} = $programdata->[$program_fields->{episode_no}];
+                   $guidedata[$programcount]->{originalairdate} = $startdt->ymd('-'); 
+               }
+               if (defined($programdata->[$program_fields->{series_no}]) and ($programdata->[$program_fields->{series_no}] ne "") )
+               {
+                   $guidedata[$programcount]->{season} = $programdata->[$program_fields->{series_no}];
+               }
+               if (($programdata->[$program_fields->{series_no}] eq "") and ($programdata->[$program_fields->{episode_no}] ne ""))
+               {
+                   $guidedata[$programcount]->{season} = $startdt->year();
+               }
 #            if ((defined($programdata->[$program_fields->{rating}])) and (($programdata->[$program_fields->{rating}]) ne ""))
 #            {
 #                $guidedata[$programcount]->{rating} = $programdata->[$program_fields->{rating}];
 #            }        
-            $guidedata[$programcount]->{icon} = "https://www.fetchtv.com.au/v2/epg/program/".$programdata->[$program_fields->{program_id}]."/image";
-            $programcount++;
+                $guidedata[$programcount]->{icon} = "https://www.fetchtv.com.au/v2/epg/program/".$programdata->[$program_fields->{program_id}]."/image";
+                $programcount++;
+            }
         }
-    }
     }
     return \@guidedata;
 }

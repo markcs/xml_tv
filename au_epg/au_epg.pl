@@ -136,7 +136,7 @@ print Dumper @fetch_channels if ($debuglevel >= 2);
 
 warn("Getting Fetch TV EPG...\n") if ($debuglevel >= 1);
 
-my $fetch_epg = fetch_programlist($fua, $fetch_all_channels, $fetchtv_region, $numdays);
+my $fetch_epg = fetch_programlist($debuglevel, $fua, $fetch_all_channels, $fetchtv_region, $numdays);
 print Dumper $fetch_epg if ($debuglevel >= 2);
 
 warn("Getting Region Mapping...\n") if ($debuglevel >= 1);
@@ -148,8 +148,14 @@ warn("Combining the two EPG's... (this may take some time)\n") if ($debuglevel >
 my @combined_epg = Combine_epg($fetch_all_channels, \@$fetch_epg, \@ABC_epg);
 print Dumper @combined_epg if ($debuglevel >= 2);
 
+warn("Duplicating Channels...\n") if ($debuglevel >= 1);
+my @duplicated_channels = duplicate_channels(\@fetch_channels,$duplicated_channels);
+my @duplicated_epg = duplicate_epg(\@combined_epg,$duplicated_channels);
+print Dumper @duplicated_channels if ($debuglevel >= 2);
+print Dumper @duplicated_epg if ($debuglevel >= 2);
+
 warn("Build EPG and end..\n") if ($debuglevel >= 1);
-buildXML(\@fetch_channels, \@combined_epg, $identifier, $pretty);
+buildXML(\@duplicated_channels, \@duplicated_epg, $identifier, $pretty);
 
 
 sub Combine_epg
@@ -167,7 +173,6 @@ sub Combine_epg
 		my $programmatch = 0;		
 		for (my $abc_show_count = 0; $abc_show_count < @$epg2; $abc_show_count++)
 		{
-			#print Dumper $epg1->[$ttv_show_count];
 			my $shownamecomparison = similarity $epg1->[$ttv_show_count]->{title}, $epg2->[$abc_show_count]->{title};
 			#next if 
 			#print "$epg1->[$ttv_show_count]->{title} eq $epg2->[$abc_show_count]->{title} ($shownamecomparison)\n";
@@ -175,7 +180,6 @@ sub Combine_epg
 			{ 
 				if ($shownamecomparison > 0.6)
 				{
-					#print Dumper $epg1->[$ttv_show_count];
 					print "MATCHED (channel $epg1->[$ttv_show_count]->{epg_id} ) $epg1->[$ttv_show_count]->{title} eq $epg2->[$abc_show_count]->{title} ($shownamecomparison)\n" if ($debuglevel >= 2);
 					$epg1->[$ttv_show_count]->{repeat} = $epg2->[$abc_show_count]->{repeat} if (defined($epg2->[$abc_show_count]->{repeat}));
 					$epg1->[$ttv_show_count]->{subtitle} = $epg2->[$abc_show_count]->{subtitle} if (defined($epg2->[$abc_show_count]->{subtitle}));
@@ -285,8 +289,7 @@ sub printchannels
 	my $id;
 	foreach my $channel (@$channels)
 	{
-		#next if (($channel->{lcn} ne "1") and ($channel->{lcn} ne "2") and ($channel->{lcn} ne "20")  and ($channel->{lcn} ne "25") and ($channel->{lcn} ne "21"));
-        print Dumper $channel;
+
 		$id = $channel->{epg_id}.$identifier;	
 		${$XMLRef}->startTag('channel', 'id' => $id);
 		${$XMLRef}->dataElement('display-name', $channel->{name});
@@ -581,13 +584,13 @@ sub duplicate_epg
 	for (my $epgcount = 0; $epgcount < @$epg; $epgcount++)
 	{
 		push(@duplicate_epg,@$epg[$epgcount]);
+		#print "$duplicate_channels->{@$epg[$epgcount]->{lcn}}\n";
 		if (defined($duplicate_channels->{@$epg[$epgcount]->{lcn}}) )
 		{
 			my @dup_channels = split(/,/,$duplicate_channels->{@$epg[$epgcount]->{lcn}});
 			foreach my $duplcn (@dup_channels)
 			{
 				my $tmpchannel;
-
 				$tmpchannel = dclone(@$epg[$epgcount]);
 			
 				#$tmpchannel->{id} =  $duplcn.".epg.com.au";
