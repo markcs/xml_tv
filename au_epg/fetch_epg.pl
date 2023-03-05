@@ -131,7 +131,7 @@ sub fetch_programlist
     my @guidedata;
     my $programcount = 0;
 
-    for (my $blockcount = 0;$blockcount < $numdays*4 ; $blockcount++)
+    for (my $blockcount = 0;$blockcount < $numdays*6 ; $blockcount++)
     {
         my $blocknum = int($epoch_time_now/86400*6) + $blockcount;
         my $block = "4-".$blocknum;
