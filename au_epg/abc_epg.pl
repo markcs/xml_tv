@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# <!#FT> 2023/03/12 18:49:57.118 </#FT> 
+
 use strict;
 use warnings;
 use DateTime;
@@ -6,247 +8,207 @@ use Gzip::Faster;
 
 sub ABC_Get_Regions
 {
-	my ($debuglevel, $ua, $fvregion) = @_;
+	my ($debuglevel, $ua, $region, $fetchtv_regions) = @_;
 	my @fvregions = ();
-	my $return_json;
+	my $return_hash;
+	my @return_regions = ();
 	my %state_mapping =  ( 
-		'TAS' => 'Tasmania',
-		'QLD' => 'Queensland',
-		'NSW' => 'New South Wales',
-		'SA' => 'South Australia',
-		'NT' => 'Northern Territory',
-		'WA' => 'Western Australia',
-		'ACT' => 'Canberra',
-		'VIC' => 'Victoria',
+		'TAS' => {'full_state_name' => 'Tasmania', 'timezone' => 'Australia/Hobart'},
+		'QLD' => {'full_state_name' => 'Queensland', 'timezone' => 'Australia/Brisbane'},
+		'NSW' => {'full_state_name' => 'New South Wales', 'timezone' => 'Australia/Sydney'},
+		'SA' => {'full_state_name' => 'South Australia', 'timezone' => 'Australia/Adelaide'},
+		'NT' => {'full_state_name' => 'Northern Territory', 'timezone' => 'Australia/Darwin'},
+		'WA' => {'full_state_name' => 'Western Australia', 'timezone' => 'Australia/Perth'},
+		'ACT' => {'full_state_name' => 'Canberra', 'timezone' => 'Australia/Canberra'},
+		'VIC' => {'full_state_name' => 'Victoria', 'timezone' => 'Australia/Melbourne'},
 	);
-	#get region list from Freeview
-	my $fvurl = "https://freeview.com.au/tv-guide";
-	my $res = geturl($ua,$fvurl);
-	die("Unable to connect to FreeView to get regions (ABC_Get_Regions).\n") if (!$res->is_success);
-
-	my $data = $res->content;
-	$data =~ s/[\n\r]//g;
-	$data =~ s/.*__data=(.*);\s+window.prismi.*/$1/;
-	my $fvchannelinfo = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 
 	my $url = "https://www.abc.net.au/tv/gateway/release/js/core.min.js";
-	$res = geturl($ua,$url,3);
+	my $res = geturl($debuglevel, $ua,$url,3);
 	die("Unable to connect to ABC (buildregions).\n") if (!$res->is_success);
-	$data = $res->content;
+	my $data = $res->content;
 	$data =~ s/\R//g;
 	$data =~ s/.*constant\(\"tvSettings\",(.*)\),angular.module\(\"tvGuideApp\"\).*/$1/;	
 	$data =~ s/,is_state:\!.}/}/g;
 	$data =~ s/\W(\w)\W/\"$1\"/g;
+	
 	$data =~ s/([^\s\"A-Za-z0-9\!])([A-Za-z0-9_\!]+)([^\s\"A-Za-z0-9\!])/$1\"$2\"$3/g;
 	my $abc_region_json = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
 
-	if ($fvregion eq 'help')
-	{
-		for (my $fv_count = 0; $fv_count < @{$fvchannelinfo->{regions}->{list}->{items}}; $fv_count++)
-		{
-			$return_json->[$fv_count]->{fvregion} = $fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{id};			
-		}
-	}
-	else
-	{
-		for (my $fv_count = 0; $fv_count < @{$fvchannelinfo->{regions}->{list}->{items}}; $fv_count++)
-		{
+	foreach my $fetch_region_data (@$region)
+	{	
+		foreach my $fetchtv_region (@$fetchtv_regions)
+		{		
 			my $found = 0;
-			my $region_json;
-			print "$fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{id} <> $fvregion\n" if ($debuglevel == 2);
-			if ($fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{id} eq $fvregion)
+			
+			foreach my $abc_region_data (@{$abc_region_json->{regions}})
 			{
-				$return_json->{timezone} = $fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{timezone};
-				$return_json->{fvregion} = $fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{id};
-				$return_json->{label} = $fvchannelinfo->{regions}->{list}->{items}->[$fv_count]->{label};
-				my $state = uc($fvregion);
-				$state =~ s/REGION_(.*?)_(.*)/$1/;
-				my $city = $2;
-				print "state = $state city = $city\n" if ($debuglevel == 2);
-				for (my $abc_region_count = 0; $abc_region_count < scalar(@{$abc_region_json->{regions}}); $abc_region_count++)
+				my $tmpname = $fetch_region_data->{region_name};
+				$tmpname =~ s/\s//g;
+				if  ( ($tmpname eq $abc_region_data->{id}) and ($fetch_region_data->{region_number} eq $fetchtv_region)) 
 				{
-					print uc($abc_region_json->{regions}->[$abc_region_count]->{id})." = ".$city."\n" if ($debuglevel == 2);
-					if (uc($abc_region_json->{regions}->[$abc_region_count]->{id}) eq $city)
+					$found = 1;
+					my $regiondefined = 0;
+					my $counter = 0;
+					foreach my $tmpregion (@return_regions)
 					{
-						$return_json->{id} = $abc_region_json->{regions}->[$abc_region_count]->{id};
-						$found = 1;
+						if ( (defined($return_regions[$counter]->{id})) and ($return_regions[$counter]->{id} eq $fetchtv_region))
+						{
+							push(@{$return_regions[$counter]->{region_number}}, $fetchtv_region);
+							$regiondefined = 1;
+							$return_hash->{$abc_region_data->{id}}->{$fetchtv_region} = 1;
+						}
+						$counter++;
 					}
-				}
-				if (!$found)
-				{
-					$return_json->{id} = $state_mapping{$state};
-				}
+					if (!$regiondefined)
+					{
+						$return_regions[$counter]->{id} = $abc_region_data->{id};
+						$return_regions[$counter]->{timezone} = $state_mapping{$fetch_region_data->{state}}->{timezone};	
+						push(@{$return_regions[$counter]->{region_number}}, $fetchtv_region);
+						$return_hash->{$abc_region_data->{id}}->{$fetchtv_region} = 1;
+					} 
+				}			
+			}	
+			if ( ($fetch_region_data->{region_number} eq $fetchtv_region) and !$found) 
+			{
+				my $regiondefined = 0;
+				my $counter = 0;
+					foreach my $tmpregion (@return_regions)
+					{
+						if ((defined($return_regions[$counter]->{id})) and ($return_regions[$counter]->{id} eq $state_mapping{$fetch_region_data->{state}}->{full_state_name}))
+						{
+							push(@{$return_regions[$counter]->{region_number}}, $fetchtv_region);
+							$return_hash->{$state_mapping{$fetch_region_data->{state}}->{full_state_name}}->{$fetchtv_region} = 1;
+							$regiondefined = 1;
+						}
+						$counter++;
+					}					
+					if (!$regiondefined)
+					{
+						$return_regions[$counter]->{id} = $state_mapping{$fetch_region_data->{state}}->{full_state_name};
+						$return_regions[$counter]->{timezone} = $state_mapping{$fetch_region_data->{state}}->{timezone};	
+						push(@{$return_regions[$counter]->{region_number}}, $fetchtv_region);
+						$return_hash->{$state_mapping{$fetch_region_data->{state}}->{full_state_name}}->{$fetchtv_region} = 1;
+
+					} 
 			}
 		}
 	}
-	print Dumper $return_json if ($debuglevel == 2);
-	if ($fvregion ne "help")
-	{
-		if ((!defined($return_json->{id})) or (!defined($return_json->{timezone})) or (!defined($return_json->{fvregion}) ))
-	{
-		die("Incorrect region supplied -> $fvregion");
-	}}
-	return $return_json;
+	return $return_hash, \@return_regions;
 }
 
 sub ABC_Get_EPG
 {
-	my ($ua, $regioninfo, $numdays) = @_;
-	
-	#use from midnight tomorrow as ABC doesn't get the whole of EPG today which results in some unmatched entries/repeats not recognised.
-	my $dt = DateTime->today->add(days => 1 );
-	
-	$dt->set_time_zone('Australia/Sydney');
-	my $region = $regioninfo->{id};
-	my $abc_region_tz = $regioninfo->{timezone};
-	
-	my @epg;
-	for (my $day = 0; $day < $numdays; $day++)
-	{
-		my $date = $dt->ymd;
-		my $url = "https://epg.abctv.net.au/processed/".$region."_".$date.".json";
-		my $res = geturl($ua,$url,3);
-		my $data = $res->content;
-		if (!$res->is_success)
-		{
-			die("\n(getepg) FATAL: Unable to connect to ABC for $url (".$res->{code}.")\n");
-		}
-		my $content_encoding = $res->header ('Content-Encoding');
-		if ($content_encoding eq 'gzip')
-		{
-			$data = gunzip ($res->content);
-		}		
-		my $tmpdata;
-		eval
-		{
-			$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
-			1;
-		};
-		push(@epg,$tmpdata);
-		$dt->add( days => 1 );
-	}
-	my $programcount = 0;
+	my ($debuglevel, $ua, $regiondata, $numdays) = @_;
 	my @guidedata;
-    for (my $epgdays = 0; $epgdays < @epg; $epgdays++)
-    {
-		my $Tformat = DateTime::Format::Strptime->new( pattern => '%Y-%m-%dT%H:%M:%S', time_zone => $abc_region_tz);
-
-		for (my $schedule = 0; $schedule < scalar(@{$epg[$epgdays]->{schedule}}); $schedule++)
+	my $guidedata;
+	foreach my $regioninfo (@$regiondata)
+	{
+		my $dt = DateTime->today; #->add(days => 1 );	
+		$dt->set_time_zone('Australia/Sydney');
+		my $region = $regioninfo->{id};
+		my $abc_region_tz = $regioninfo->{timezone};
+		my @epg;
+		my $programcount = 0;
+		for (my $day = 0; $day <= $numdays; $day++)
 		{
-			#print $epg[$epgdays]->{schedule}->[$schedule]->{channel};
-			for (my $listing = 0; $listing < scalar(@{$epg[$epgdays]->{schedule}->[$schedule]->{listing}}); $listing++)
+			my $date = $dt->ymd;
+			my $url = "https://epg.abctv.net.au/processed/".$region."_".$date.".json";
+			my $res = geturl($debuglevel, $ua,$url,3);
+			my $data = $res->content;
+			if (!$res->is_success)
 			{
-				#print Dumper $epg[$epgdays]->{schedule}->[$schedule]->{listing}->[$listing];
-				my $tmplisting = $epg[$epgdays]->{schedule}->[$schedule]->{listing}->[$listing];
-                $guidedata[$programcount]->{channelname} = $epg[$epgdays]->{schedule}->[$schedule]->{channel};
-                #$guidedata[$programcount]->{id} = $lcn.".epg.com.au";
-    	    	$guidedata[$programcount]->{desc} = $tmplisting->{description};
-                $guidedata[$programcount]->{title} = $tmplisting->{title};
-				$guidedata[$programcount]->{repeat} = $tmplisting->{repeat};
-				my $end_seconds=0; my $start_seconds=0;
-				eval
-				{
-					$start_seconds = $Tformat->parse_datetime( $tmplisting->{start_time} )->epoch;					
-					1;
-				};
-				eval
-				{
-					$end_seconds = $Tformat->parse_datetime( $tmplisting->{end_time} )->epoch;					
-					1;
-				};
-				my $startdt = DateTime->from_epoch( epoch => $start_seconds, time_zone => 'UTC' );
-				my $enddt = DateTime->from_epoch( epoch => $end_seconds, time_zone => 'UTC' );				
-				$guidedata[$programcount]->{start_seconds} = $start_seconds;				
-				$guidedata[$programcount]->{stop_seconds} = $end_seconds;
-				$guidedata[$programcount]->{start} = $startdt->ymd('').$startdt->hms('')." +0000";
-				$guidedata[$programcount]->{stop} = $enddt->ymd('').$enddt->hms('')." +0000";
-				$guidedata[$programcount]->{subtitle} = $tmplisting->{episode_title} if defined ($tmplisting->{episode_title});
-				my $originalairdate = $startdt;
-				$originalairdate->set_time_zone($abc_region_tz);
-				$guidedata[$programcount]->{originalairdate} = $originalairdate->ymd('-')." ".$originalairdate->hms(':');
-				if (($tmplisting->{show_type} =~ /program/i) and (!$tmplisting->{repeat}))
-				{
-					$guidedata[$programcount]->{originalairdate} = $startdt->ymd('-')." ".$startdt->hms(':');
-				}
-
-				if (defined($tmplisting->{rating}))
-                {
-                    $guidedata[$programcount]->{rating} = $tmplisting->{rating};
-                }
-
-				if (defined($tmplisting->{series_num}))
-                {
-                    $guidedata[$programcount]->{season} = $tmplisting->{series_num};
-                }
-				elsif (defined($tmplisting->{series}))
-                {
-                    $guidedata[$programcount]->{season} = $tmplisting->{series_num};
-                }
-				if (defined($tmplisting->{episode_num}))
-                {
-                    $guidedata[$programcount]->{episode} = $tmplisting->{episode_num};
-                }
-				elsif (defined($tmplisting->{episode}))
-                {
-                    $guidedata[$programcount]->{episode} = $tmplisting->{episode_num};
-                }
-					
-				if (defined($tmplisting->{genres}))
-				{
-					foreach my $tmpcat (@{$tmplisting->{genres}})
-					{
-						push(@{$guidedata[$programcount]->{category}}, $tmpcat);
-					}
-				}
-				$programcount++;
+				die("\n(getepg) FATAL: Unable to connect to ABC for $url (".$res->{code}.")\n");
 			}
-		}	
-	}
-	#print Dumper @guidedata;
-	return @guidedata;
-}
+			my $content_encoding = $res->header ('Content-Encoding');
+			if ($content_encoding eq 'gzip')
+			{
+				$data = gunzip ($res->content);
+			}		
+			my $tmpdata;
+			eval
+			{
+				$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
+				1;
+			};
+			push(@epg,$tmpdata);
+			$dt->add( days => 1 );
+		}
+		for (my $epgdays = 0; $epgdays < @epg; $epgdays++)
+		{
+			my $Tformat = DateTime::Format::Strptime->new( pattern => '%Y-%m-%dT%H:%M:%S', time_zone => $abc_region_tz);
 
-sub toLocalTimeString
-{
-	my ($fulldate, $result_timezone) = @_;
-	my ($year, $month, $day, $hour, $min, $sec, $offset) = $fulldate =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)(.*)/;#S$1E$2$3$4$5$6$7/;
-	my ($houroffset, $minoffset);
+			for (my $schedule = 0; $schedule < scalar(@{$epg[$epgdays]->{schedule}}); $schedule++)
+			{
+				for (my $listing = 0; $listing < scalar(@{$epg[$epgdays]->{schedule}->[$schedule]->{listing}}); $listing++)
+				{
+					my $tmplisting = $epg[$epgdays]->{schedule}->[$schedule]->{listing}->[$listing];
+					$guidedata->{$region}->[$programcount]->{channelname} = $epg[$epgdays]->{schedule}->[$schedule]->{channel};
+					$guidedata->{$region}->[$programcount]->{desc} = $tmplisting->{description};
+					$guidedata->{$region}->[$programcount]->{title} = $tmplisting->{title};
+					$guidedata->{$region}->[$programcount]->{repeat} = $tmplisting->{repeat};
+					my $end_seconds=0; my $start_seconds=0;
+					eval
+					{
+						$start_seconds = $Tformat->parse_datetime( $tmplisting->{start_time} )->epoch;					
+						1;
+					};
+					eval
+					{
+						$end_seconds = $Tformat->parse_datetime( $tmplisting->{end_time} )->epoch;					
+						1;
+					};
+					my $startdt = DateTime->from_epoch( epoch => $start_seconds, time_zone => 'UTC' );
+					my $enddt = DateTime->from_epoch( epoch => $end_seconds, time_zone => 'UTC' );				
+					$guidedata->{$region}->[$programcount]->{start_seconds} = $start_seconds;				
+					$guidedata->{$region}->[$programcount]->{stop_seconds} = $end_seconds;
+					$guidedata->{$region}->[$programcount]->{start} = $startdt->ymd('').$startdt->hms('')." +0000";
+					$guidedata->{$region}->[$programcount]->{stop} = $enddt->ymd('').$enddt->hms('')." +0000";
+					$guidedata->{$region}->[$programcount]->{subtitle} = $tmplisting->{episode_title} if defined ($tmplisting->{episode_title});
+					my $originalairdate = $startdt;
+					$originalairdate->set_time_zone($abc_region_tz);
+					$guidedata->{$region}->[$programcount]->{originalairdate} = $originalairdate->ymd('-')." ".$originalairdate->hms(':');
+					if (($tmplisting->{show_type} =~ /program/i) and (!$tmplisting->{repeat}))
+					{
+						$guidedata[$programcount]->{$region}->[$programcount]->{originalairdate} = $startdt->ymd('-')." ".$startdt->hms(':');
+					}
 
-	if ($offset =~ /z/i)
-	{
-		$offset = 0;
-		$houroffset = 0;
-		$minoffset = 0;
+					if (defined($tmplisting->{rating}))
+					{
+						$guidedata->{$region}->[$programcount]->{rating} = $tmplisting->{rating};
+					}
+
+					if (defined($tmplisting->{series_num}))
+					{
+						$guidedata->{$region}->[$programcount]->{season} = $tmplisting->{series_num};
+					}
+					elsif (defined($tmplisting->{series}))
+					{
+						$guidedata->{$region}->[$programcount]->{season} = $tmplisting->{series_num};
+					}
+					if (defined($tmplisting->{episode_num}))
+					{
+						$guidedata->{$region}->[$programcount]->{episode} = $tmplisting->{episode_num};
+					}
+					elsif (defined($tmplisting->{episode}))
+					{
+						$guidedata->{$region}->[$programcount]->{episode} = $tmplisting->{episode_num};
+					}
+						
+					if (defined($tmplisting->{genres}))
+					{
+						foreach my $tmpcat (@{$tmplisting->{genres}})
+						{
+							push(@{$guidedata->{$region}->[$programcount]->{category}}, $tmpcat);
+						}
+					}
+					$programcount++;
+				}
+			}	
+		}
 	}
-	else
-	{
-		($houroffset, $minoffset) = $offset =~ /(\d+):(\d+)/;
-	}
-	my $dt = DateTime->new(
-		 	year		=> $year,
-		 	month		=> $month,
-		 	day		=> $day,
-		 	hour		=> $hour,
-		 	minute		=> $min,
-		 	second		=> $sec,
-		 	nanosecond	=> 0,
-		 	time_zone	=> $offset,
-		);
-	$dt->set_time_zone(  $result_timezone );
-	my $tz = DateTime::TimeZone->new( name => $result_timezone );
-	my $localoffset = $tz->offset_for_datetime($dt);
-	$localoffset = $localoffset/3600;
-	if ($localoffset =~ /\./)
-	{
-		$localoffset =~ s/(.*)(\..*)/$1$2/;
-		$localoffset = sprintf("+%0.2d:%0.2d", $1, ($2*60));
-	} else {
-		$localoffset = sprintf("+%0.2d:00", $localoffset);
-	}
-	my $ymd = $dt->ymd;
-	my $hms = $dt->hms;
-	my $returntime = $ymd . "T" . $hms . $localoffset;
-	return $returntime;
+
+	return $guidedata;
 }
 
 return 1;

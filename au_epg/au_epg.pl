@@ -1,4 +1,7 @@
 #!/usr/bin/perl
+# xmltv.net Australian xmltv epg creater
+# <!#FT> 2023/03/12 18:47:48.857 </#FT> 
+
 use strict;
 use warnings;
 
@@ -18,149 +21,217 @@ use File::Basename;
 use Term::ProgressBar;
 use IO::Compress::Gzip;
 
-my $dirname = dirname(__FILE__);
-require "$dirname/abc_epg.pl";
-require "$dirname/fetch_epg.pl";
+main: 
+{
+	my $dirname = dirname(__FILE__);
+	require "$dirname/abc_epg.pl";
+	require "$dirname/fetch_epg.pl";
 
-my $identifier = "auepg.com.au";
-my %duplicate_channels = ();
-my $duplicated_channels = ();
-my %extra_channels = ();
-my $extra_channels = ();
-my @exclude_channels = ();
-my $Config;
+	my $identifier = "auepg.com.au";
+	my %duplicate_channels = ();
+	my $duplicated_channels = ();
+	my %extra_channels = ();
+	my $extra_channels = ();
+	my @exclude_channels = ();
+	my $Config;
+	my @getregions;
+	my @fetchtv_regions; 
 
+	my $ua = LWP::UserAgent->new;
+	$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
+	$ua->default_header( 'Accept-Charset' => 'utf-8');
+	$ua->cookie_jar( {} );
 
-my $ua = LWP::UserAgent->new;
-$ua->agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0");
-$ua->default_header( 'Accept-Charset' => 'utf-8');
-$ua->cookie_jar( {} );
+	my ($configfile, $debuglevel, $log, $pretty, $fetchtv_region, $numdays, $output, $help) = (undef, 0, undef, 1, undef, 7, undef, undef);
+	GetOptions
+	(
+		'config=s'			=> \$configfile,
+		'debuglevel=s'		=> \$debuglevel,
+		'log=s'				=> \$log,
+		'pretty'			=> \$pretty,
+		'fetchtv_region=s'	=> \$fetchtv_region,
+		'numdays=s'			=> \$numdays,
+		'output=s'			=> \$output,
+		'help'				=> \$help,
 
-my ($configfile, $debuglevel, $log, $pretty, $fvregion, $fetchtv_region, $numdays, $outputfile, $apikey, $help) = (undef, 0, undef, 1, undef, undef, 7, undef, undef, undef);
-GetOptions
-(
-	'config=s'			=> \$configfile,
-	'debuglevel=s'		=> \$debuglevel,
-	'log=s'				=> \$log,
-	'pretty'			=> \$pretty,
-	'abc_region=s'		=> \$fvregion,
-	'fetchtv_region=s'	=> \$fetchtv_region,
-	'numdays=s'			=> \$numdays,
-	'file=s'			=> \$outputfile,
-    'api=s'				=> \$apikey,
-	'help'				=> \$help,
+	) or die ("Syntax Error!  Try $0 --help");
 
-) or die ("Syntax Error!  Try $0 --help");
+	my $fua = fetch_authenticate($ua);
 
-my $fua = fetch_authenticate($ua);
+	UsageAndHelp($debuglevel, $fua) if ($help);
 
-UsageAndHelp($debuglevel, $fua) if ($help);
+	my ($fetch_regions, $fetch_all_channels) = fetch_channels($debuglevel, $fua);
 
-if (defined($configfile)) {
-	$Config = Config::Tiny->read( $configfile );
-	die($Config::Tiny::errstr."\n") if ($Config::Tiny::errstr ne "");
-	$log = $Config->{main}->{log} if (defined($Config->{main}->{log}));
-	$debuglevel = $Config->{main}->{debuglevel} if (defined($Config->{main}->{debuglevel}));	
-	$pretty = ToBoolean($Config->{main}->{pretty}) if (defined($Config->{main}->{pretty}));	
-	$numdays = $Config->{main}->{days} if (defined($Config->{main}->{days}));
-	$fvregion = $Config->{main}->{abc_region} if (defined($Config->{main}->{abc_region}));
-	$fvregion = $Config->{main}->{region} if (defined($Config->{main}->{region})); #remove later
-	$fetchtv_region = $Config->{main}->{fetchtv_region} if (defined($Config->{main}->{fetchtv_region}));
-	$outputfile = $Config->{main}->{output} if (defined($Config->{main}->{output}));
-	$apikey = $Config->{main}->{apikey} if (defined($Config->{main}->{apikey}));
-    if ((defined($Config->{duplicate})) and ((keys %{$Config->{duplicate}}) > 0))
-	{
-		%duplicate_channels = %{$Config->{duplicate}};
-		while (my ($key, $value) = each %duplicate_channels)
+	if (defined($configfile)) {
+		$Config = Config::Tiny->read( $configfile );
+		die($Config::Tiny::errstr."\n") if ($Config::Tiny::errstr ne "");
+		$log = $Config->{main}->{log} if (defined($Config->{main}->{log}));
+		$debuglevel = $Config->{main}->{debuglevel} if (defined($Config->{main}->{debuglevel}));	
+		$pretty = ToBoolean($Config->{main}->{pretty}) if (defined($Config->{main}->{pretty}));	
+		$numdays = $Config->{main}->{days} if (defined($Config->{main}->{days}));
+		$output = $Config->{main}->{output} if (defined($Config->{main}->{output}));
+		$fetchtv_region = $Config->{main}->{fetchtv_region} if (defined($Config->{main}->{fetchtv_region}));	
+		if ((defined($Config->{duplicate})) and ((keys %{$Config->{duplicate}}) > 0))
 		{
-			if (defined($duplicated_channels->{$value}))
+			%duplicate_channels = %{$Config->{duplicate}};
+			while (my ($key, $value) = each %duplicate_channels)
 			{
-				$duplicated_channels->{$value} = $duplicated_channels->{$value}.",".$key;	
-			}
-			else {
-				$duplicated_channels->{$value} = $key;
+				if (defined($duplicated_channels->{$value}))
+				{
+					$duplicated_channels->{$value} = $duplicated_channels->{$value}.",".$key;	
+				}
+				else {
+					$duplicated_channels->{$value} = $key;
+				}
 			}
 		}
-	}
-    if ((defined($Config->{extrachannels})) and ((keys %{$Config->{extrachannels}}) > 0))
-	{
-		%extra_channels = %{$Config->{extrachannels}};
-		while (my ($key, $value) = each %extra_channels)
+		if ((defined($Config->{extrachannels})) and ((keys %{$Config->{extrachannels}}) > 0))
 		{
-			$value =~ s/(.*)\s+#.*/$1/;
-			$extra_channels->{$key} = $value;		
+			%extra_channels = %{$Config->{extrachannels}};
+			while (my ($key, $value) = each %extra_channels)
+			{
+				$value =~ s/(.*)\s+#.*/$1/;
+				$extra_channels->{$key} = $value;		
+			}
+		}
+		if (defined($Config->{main}->{excludechannels}))
+		{
+			my $excludechannels = $Config->{main}->{excludechannels};
+			@exclude_channels = split(/,/,$excludechannels);
+		}
+
+		if ($fetchtv_region =~ /all/i) 
+		{
+			foreach my $region (@$fetch_regions)
+			{
+				$fetchtv_region = "ALL";
+				push(@fetchtv_regions, $region->{region_number})
+			}
+		}
+		else
+		{
+			@fetchtv_regions = split(/,/,$fetchtv_region);
+		}	
+		foreach my $region (@fetchtv_regions)
+		{
+			#duplicate channels section
+			my $sectionname = "$region-duplicate";
+			if ((defined($Config->{$sectionname})) and ((keys %{$Config->{$sectionname}}) > 0))
+			{
+				%duplicate_channels = %{$Config->{$sectionname}};
+				while (my ($key, $value) = each %duplicate_channels)
+				{
+					if (defined($duplicated_channels->{$region}->{$value}))
+					{
+						$duplicated_channels->{$region}->{$value} = $duplicated_channels->{$region}->{$value}.",".$key;	
+					}
+					else 
+					{
+						$duplicated_channels->{$region}->{$value} = $key;
+					}
+				}			
+			}
 		}
 	}
-	if (defined($Config->{main}->{excludechannels}))
+
+	if ( (!defined($fetchtv_region)) or (!defined($output)) )
 	{
-		my $excludechannels = $Config->{main}->{excludechannels};
-		@exclude_channels = split(/,/,$excludechannels);
+		print "Incorrect options given\n";
+		UsageAndHelp($debuglevel, $fua);
 	}
-}
 
-if ( (!defined($fvregion)) or (!defined($outputfile)) )
-{
-	print "Incorrect options given\n";
-	UsageAndHelp($debuglevel, $fua);
-}
-
-
-if (defined($log))
-{
-    my $logfile;
-	$log =~ s/\/$//;
-	if (-d $log) 
+	if (defined($log))
 	{
-		$logfile = $log.'/'.$fvregion.".log"; 
+		my $logfile;
+		$log =~ s/\/$//;
+		if (-d $log) 
+		{
+			$logfile = $log.'/'.$fetchtv_region.".log"; 
+		}
+		else 
+		{
+			$logfile = $log;
+		}  
+		open (my $LOG, '>', $logfile)  || die "can't open $logfile.  Does $logfile exist?";
+		open (STDERR, ">>&=", $LOG)         || die "can't redirect STDERR";
+		select $LOG;
 	}
-	else 
+
+
+
+	warn("\nOptions...\n\tfetchtv_region=$fetchtv_region\n\toutput=$output\n\tdays=$numdays\n\tdebuglevel=$debuglevel\n\tpretty=$pretty\n") if ($debuglevel >= 1);
+
+	warn("\tlog=$log\n") if (defined($log) and ($debuglevel >= 1));
+
+	print Dumper $fetch_regions if ($debuglevel >= 2);
+	print Dumper $fetch_all_channels if ($debuglevel >= 2);
+
+	if ($fetchtv_region =~ /all/i) 
 	{
-		$logfile = $log;
-	}  
-	open (my $LOG, '>', $logfile)  || die "can't open $logfile.  Does $logfile exist?";
-	open (STDERR, ">>&=", $LOG)         || die "can't redirect STDERR";
-	select $LOG;
+		foreach my $region (@$fetch_regions)
+		{
+			push(@fetchtv_regions, $region->{region_number})
+		}
+	}
+	else
+	{
+		@fetchtv_regions = split(/,/,$fetchtv_region);
+	}	
+
+	my ($fetch_epgid_region_map, @fetch_channels) = fetch_region_channels($fetch_all_channels, \@fetchtv_regions);
+	print Dumper $fetch_epgid_region_map if ($debuglevel >= 2);
+	print Dumper @fetch_channels if ($debuglevel >= 2);
+
+	warn("Getting Fetch TV EPG...\n") if ($debuglevel >= 1);
+
+	my $fetch_epg = fetch_programlist($debuglevel, $fua, $fetch_all_channels, \@fetchtv_regions, $numdays);
+
+	print Dumper $fetch_epg if ($debuglevel >= 2);
+
+	warn("Getting Region Mapping...\n") if ($debuglevel >= 2);
+	my ($abc_id_region_map, $abc_region_info) = ABC_Get_Regions($debuglevel, $ua, $fetch_regions,  \@fetchtv_regions);
+
+	print Dumper $abc_id_region_map if ($debuglevel >= 2);
+	print Dumper $abc_region_info if ($debuglevel >= 2);
+	my %mappedregions = merge_regions($debuglevel, \@fetch_channels, $abc_region_info);
+
+	warn("Getting ABC EPG...\n") if ($debuglevel >= 1);
+	my $ABC_epg = ABC_Get_EPG($debuglevel, $ua, $abc_region_info, $numdays);
+
+	warn("Combining the two EPG's... (this may take some time)\n") if ($debuglevel >= 1);
+	my $combined_epg = Combine_epg($debuglevel, \@fetchtv_regions, \%mappedregions, $fetch_epg, $ABC_epg, $abc_id_region_map);
+	print Dumper $combined_epg if ($debuglevel >= 2);
+
+	PrebuildXML($debuglevel, \@fetchtv_regions, $fetch_regions, \@fetch_channels, $combined_epg, $duplicated_channels, $identifier, $pretty, $output);
+};
+
+sub merge_regions
+{
+	my ($debuglevel, $fetchmapping, $abcmapping) = @_;
+	my %mapped;
+	foreach my $channelkey (@$fetchmapping)
+	{
+		foreach my $fetchregion (@{$channelkey->{regions}})
+		{
+			
+			foreach my $abckey (@$abcmapping)
+			{
+				foreach my $abcregion (@{$abckey->{region_number}})
+				{
+					if ($fetchregion eq $abcregion)
+					{					
+						push (@{$mapped{$channelkey->{epg_id}}}, $abckey->{id});
+					}
+				}
+			}
+		}
+	}
+	return %mapped;
 }
-
-warn("\nOptions...\n\tabc_region=$fvregion\n\fetchtv_region=$fetchtv_region\n\toutput=$outputfile\n\tdays = $numdays\n\tdebuglevel = $debuglevel\n\tpretty = $pretty\n") if ($debuglevel >= 1);
-
-warn("\tlog=$log\n") if (defined($log) and ($debuglevel >= 1));
-
-warn("Getting Fetch TV Regions and Channels...\n") if ($debuglevel >= 1);
-my ($fetch_regions, $fetch_all_channels) = fetch_channels($debuglevel, $fua);
-print Dumper $fetch_regions if ($debuglevel >= 2);
-print Dumper $fetch_all_channels if ($debuglevel >= 2);
-
-my @fetch_channels = fetch_region_channels($fetch_all_channels, $fetchtv_region);
-print Dumper @fetch_channels if ($debuglevel >= 2);
-
-warn("Getting Fetch TV EPG...\n") if ($debuglevel >= 1);
-
-my $fetch_epg = fetch_programlist($debuglevel, $fua, $fetch_all_channels, $fetchtv_region, $numdays);
-print Dumper $fetch_epg if ($debuglevel >= 2);
-
-warn("Getting Region Mapping...\n") if ($debuglevel >= 1);
-my $regioninfo = ABC_Get_Regions($debuglevel, $ua,$fvregion);
-warn("Getting Region Mapping...\n") if ($debuglevel >= 1);
-my @ABC_epg = ABC_Get_EPG($ua,$regioninfo,$numdays);
-
-warn("Combining the two EPG's... (this may take some time)\n") if ($debuglevel >= 1);
-my @combined_epg = Combine_epg($fetch_all_channels, \@$fetch_epg, \@ABC_epg);
-print Dumper @combined_epg if ($debuglevel >= 2);
-
-warn("Duplicating Channels...\n") if ($debuglevel >= 1);
-my @duplicated_channels = duplicate_channels(\@fetch_channels,$duplicated_channels);
-my @duplicated_epg = duplicate_epg(\@combined_epg,$duplicated_channels);
-print Dumper @duplicated_channels if ($debuglevel >= 2);
-print Dumper @duplicated_epg if ($debuglevel >= 2);
-
-warn("Build EPG and end..\n") if ($debuglevel >= 1);
-buildXML(\@duplicated_channels, \@duplicated_epg, $identifier, $pretty);
-
 
 sub Combine_epg
 {
-	my ($epg1channels, $epg1, $epg2) = @_;
+	my ($debuglevel, $fetch_regions, $region_mapping, $epg1, $epg2, $abc_mapping) = @_;
 	my @combinedepg;
 	my $epgcount = 0;
 	my $buffer = 600;
@@ -168,65 +239,70 @@ sub Combine_epg
 	my $unmatchedprograms = 0;
 	my @newepg;
 
-	for (my $ttv_show_count = 0; $ttv_show_count < @$epg1; $ttv_show_count++)
+	foreach my $epg1_channelkey (keys %$epg1)
 	{
-		my $programmatch = 0;		
-		for (my $abc_show_count = 0; $abc_show_count < @$epg2; $abc_show_count++)
+		for (my $ttv_show_count = 0; $ttv_show_count < @{$epg1->{$epg1_channelkey}}; $ttv_show_count++)
 		{
-			my $shownamecomparison = similarity $epg1->[$ttv_show_count]->{title}, $epg2->[$abc_show_count]->{title};
-			#next if 
-			#print "$epg1->[$ttv_show_count]->{title} eq $epg2->[$abc_show_count]->{title} ($shownamecomparison)\n";
-			if ((abs($epg1->[$ttv_show_count]->{start_seconds} - $epg2->[$abc_show_count]->{start_seconds}) < 900) ) #and ($shownamecomparison > 0.6) )
-			{ 
-				if ($shownamecomparison > 0.6)
+			my $programmatch = 0;
+			foreach my $epg2_regionkey (@{%$region_mapping{$epg1_channelkey}} )
+			{			
+				for (my $abc_show_count = 0; $abc_show_count < @{$epg2->{$epg2_regionkey}}; $abc_show_count++)
 				{
-					print "MATCHED (channel $epg1->[$ttv_show_count]->{epg_id} ) $epg1->[$ttv_show_count]->{title} eq $epg2->[$abc_show_count]->{title} ($shownamecomparison)\n" if ($debuglevel >= 2);
-					$epg1->[$ttv_show_count]->{repeat} = $epg2->[$abc_show_count]->{repeat} if (defined($epg2->[$abc_show_count]->{repeat}));
-					$epg1->[$ttv_show_count]->{subtitle} = $epg2->[$abc_show_count]->{subtitle} if (defined($epg2->[$abc_show_count]->{subtitle}));
-					$epg1->[$ttv_show_count]->{originalairdate} = $epg2->[$abc_show_count]->{originalairdate} if (defined($epg2->[$abc_show_count]->{originalairdate}));
-					if ( (defined($epg2->[$abc_show_count]->{episode})) and (!defined($epg1->[$ttv_show_count]->{episode})))
-					{
-						$epg1->[$ttv_show_count]->{episode} = $epg2->[$abc_show_count]->{episode};
-                        print "\t added episode info\n" if ($debuglevel >= 2);
-						if (defined($epg2->[$abc_show_count]->{series}))
+				
+					my $shownamecomparison = similarity $epg1->{$epg1_channelkey}->[$ttv_show_count]->{title}, $epg2->{$epg2_regionkey}->[$abc_show_count]->{title};
+					if ((abs($epg1->{$epg1_channelkey}->[$ttv_show_count]->{start_seconds} - $epg2->{$epg2_regionkey}->[$abc_show_count]->{start_seconds}) < 900) ) #and ($shownamecomparison > 0.6) )
+					{ 
+						if ($shownamecomparison > 0.6)
 						{
-							$epg1->[$ttv_show_count]->{season} = $epg2->[$abc_show_count]->{season};
-                            print "\t added season info\n" if ($debuglevel >= 2);
-						}
-						else
-						{							
-							my $year = DateTime->from_epoch( epoch => $epg1->[$ttv_show_count]->{start_seconds})->year;
-							$epg1->[$ttv_show_count]->{season} = $year;
-                            print "\t added season info for this year\n" if ($debuglevel >= 2);
-						}
-						if ( (defined($epg2->[$abc_show_count]->{rating})) and (!defined($epg1->[$ttv_show_count]->{rating})))
-						{
-							$epg1->[$ttv_show_count]->{rating} = $epg2->[$abc_show_count]->{rating};
-                            print "\t added rating\n" if ($debuglevel >= 2);
+							print "MATCHED (channel $epg1->{$epg1_channelkey}->[$ttv_show_count]->{epg_id} ) $epg1->{$epg1_channelkey}->[$ttv_show_count]->{title} eq $epg2->{$epg2_regionkey}->[$abc_show_count]->{title} ($shownamecomparison)\n" if ($debuglevel >= 2);
+							$epg1->{$epg1_channelkey}->[$ttv_show_count]->{repeat} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{repeat} if (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{repeat}));
+							$epg1->{$epg1_channelkey}->[$ttv_show_count]->{subtitle} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{subtitle} if (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{subtitle}));
+							$epg1->{$epg1_channelkey}->[$ttv_show_count]->{originalairdate} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{originalairdate} if (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{originalairdate}));
+							if ( (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{episode})) and (!defined($epg1->{$epg1_channelkey}->[$ttv_show_count]->{episode})))
+							{
+								$epg1->{$epg1_channelkey}->[$ttv_show_count]->{episode} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{episode};
+								print "\t added episode info\n" if ($debuglevel >= 2);
+								if (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{series}))
+								{
+									$epg1->{$epg1_channelkey}->[$ttv_show_count]->{season} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{season};
+									print "\t added season info\n" if ($debuglevel >= 2);
+								}
+								else
+								{							
+									my $year = DateTime->from_epoch( epoch => $epg1->{$epg1_channelkey}->[$ttv_show_count]->{start_seconds})->year;
+									$epg1->{$epg1_channelkey}->[$ttv_show_count]->{season} = $year;
+									print "\t added season info for this year\n" if ($debuglevel >= 2);
+								}
+								if ( (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{rating})) and (!defined($epg1->{$epg1_channelkey}->[$ttv_show_count]->{rating})))
+								{
+									$epg1->{$epg1_channelkey}->[$ttv_show_count]->{rating} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{rating};
+									print "\t added rating\n" if ($debuglevel >= 2);
 
+								}
+							}
+							$programmatch = 1;														
+							$epg1->{$epg1_channelkey}->{epgmatched} = 1 if ($abc_show_count eq scalar(@{$epg2->{$epg2_regionkey}}));
+							$matchedprograms++;
 						}
+					}
+					next if ($programmatch); #added
 				}
-				#splice @$epg2, $abc_show_count, 1;
-				$programmatch = 1;
-				$matchedprograms++;
-			}}
-		}
-		if (!$programmatch)
-		{
-				print "NOT MATCHED to ABC EPG -> channel $epg1->[$ttv_show_count]->{epg_id} show = $epg1->[$ttv_show_count]->{title} \t\tat $epg1->[$ttv_show_count]->{start}\n" if ($debuglevel >= 2);;
+			}
+			if (!$programmatch)
+			{
+				print "NOT MATCHED to ABC EPG -> channel $epg1->{$epg1_channelkey}->[$ttv_show_count]->{epg_id} show = $epg1->{$epg1_channelkey}->[$ttv_show_count]->{title} \t\tat $epg1->{$epg1_channelkey}->[$ttv_show_count]->{start}\n" if ($debuglevel >= 2);;
 				$unmatchedprograms++;
-				#print Dumper $epg1->[$ttv_show_count];
-				#<STDIN>;
+			}
 		}
-		push(@newepg, @$epg1[$ttv_show_count]);
+		print "Update... $matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n" if ($debuglevel >= 1);
 	}
-	print "$matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n" if ($debuglevel >= 2);
-	return @newepg;
+	print "TOTAL.... $matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n" if ($debuglevel >= 1);
+	return $epg1;
 }
 
 sub geturl
 {
-	my ($ua,$url,$max_retries,@lwp_headers) = @_;
+	my ($debuglevel, $ua,$url,$max_retries,@lwp_headers) = @_;
 	if (!@lwp_headers )
 	{
 		@lwp_headers = (
@@ -257,12 +333,43 @@ sub geturl
 	return $res;
 }
 
-sub buildXML
+sub PrebuildXML
 {
-	my ($channels, $epg, $identifier, $pretty) = @_;
+	my ($debuglevel, $fetchtv_region_list, $fetchtv_regions, $channels, $epg, $duplicated_channels, $identifier, $pretty, $outputfile) = @_;
 	warn("Starting to build the XML...\n") if ($debuglevel >= 1);
 	my $message = "http://xmltv.net";
+	my $regionname;
+	foreach my $fetchtv_region (@$fetchtv_region_list)
+	{
+		foreach my $region (@$fetchtv_regions)
+		{			
+			if ($region->{region_number} eq $fetchtv_region)
+			{
+				$regionname = $region->{region_name};
+			}
+		}
+		print "Region ".$fetchtv_region." - ".$regionname." Num Regions: ".scalar(@$fetchtv_region_list)."\n" if ($debuglevel >= 2);
+		my @fetch_channels = fetch_single_region_channels($channels, $fetchtv_region);
+		my @fetch_epg = fetch_filter_epg(\@fetch_channels, $epg, $fetchtv_region);
 
+		my @duplicated_channels = duplicate(\@fetch_channels,$duplicated_channels, $fetchtv_region);
+		my @duplicated_epg = duplicate(\@fetch_epg,$duplicated_channels, $fetchtv_region);
+
+		$regionname =~ s/[\/\s]/_/g;
+		my($filename, $dirs, $suffix) = fileparse($outputfile, qr"\..[^.]*$");
+		$suffix = ".xml" if ($suffix eq "");
+		$filename = $regionname if ((scalar(@$fetchtv_region_list) > 1) or ($filename eq "") );
+		$outputfile = $dirs.$filename.$suffix;
+		warn("Setting outputfile to  $outputfile\n") if ($debuglevel >= 1);
+
+		buildXML($debuglevel, \@duplicated_channels, \@duplicated_epg, $identifier, $pretty, $outputfile);
+	}	
+}
+
+sub buildXML
+{
+	my ($debuglevel, $channels, $epg, $identifier, $pretty, $outputfile) = @_;
+	my $message = "http://xmltv.net";
 	my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
 	$XML->xmlDecl("UTF-8");
 	$XML->doctype("tv", undef, "xmltv.dtd");
@@ -277,10 +384,13 @@ sub buildXML
 	open FILE, ">$outputfile" or die("Unable to open $outputfile file for writing: $!\n");
 	print FILE $XML;
 	close FILE;
-	warn("Writing xmltv guide to $outputfile.gz...\n") if ($debuglevel == 1);	
-	my $fh_gzip = IO::Compress::Gzip->new($outputfile.".gz");
-	print $fh_gzip $XML;
-	close $fh_gzip;	
+	if ($outputfile =~ /gz$/)
+	{
+		warn("Writing xmltv guide to $outputfile.gz...\n") if ($debuglevel == 1);
+		my $fh_gzip = IO::Compress::Gzip->new($outputfile.".gz");
+		print $fh_gzip $XML;
+		close $fh_gzip;
+	}
 }
 
 sub printchannels
@@ -305,19 +415,13 @@ sub printepg
 	my ($epg, $identifier, $XMLRef) = @_;
 	foreach my $items (@$epg)
 	{
-		#next if (($items->{lcn} ne "1") and ($items->{lcn} ne "2") and ($items->{lcn} ne "20") and ($items->{lcn} ne "25") and ($items->{lcn} ne "21"));
 		my $movie = 0;
 		my $originalairdate = "";
-		#print Dumper $items;
 		${$XMLRef}->startTag('programme', 'start' => "$items->{start}", 'stop' => "$items->{stop}", 'channel' => $items->{epg_id}.$identifier);
 		${$XMLRef}->dataElement('title', sanitizeText($items->{title}));
 		${$XMLRef}->dataElement('sub-title', sanitizeText($items->{subtitle})) if (defined($items->{subtitle}));
 		${$XMLRef}->dataElement('desc', sanitizeText($items->{desc})) if (defined($items->{desc}));
 		${$XMLRef}->dataElement('category', sanitizeText($items->{category}));
-
-		#foreach my $category (@{$items->{category}}) {
-		#	${$XMLRef}->dataElement('category', sanitizeText($category));
-		#}
 		my $iconurl = $items->{icon};
 		if (defined $iconurl)
 		{
@@ -376,244 +480,37 @@ sub sanitizeText
 	return $t;
 }
 
-
-sub getFVInfo
+sub duplicate
 {
-    my ($ua, $region) = @_;
-	my @fvregions = (
-		"region_national",
-		"region_nsw_sydney",
-		"region_nsw_newcastle",
-		"region_nsw_taree",
-		"region_nsw_tamworth",
-		"region_nsw_orange_dubbo_wagga",
-		"region_nsw_northern_rivers",
-		"region_nsw_wollongong",
-		"region_nsw_canberra",
-		"region_nt_regional",
-		"region_vic_albury",
-		"region_vic_shepparton",
-		"region_vic_bendigo",
-		"region_vic_melbourne",
-		"region_vic_ballarat",
-		"region_vic_gippsland",
-		"region_qld_brisbane",
-		"region_qld_goldcoast",
-		"region_qld_toowoomba",
-		"region_qld_maryborough",
-		"region_qld_widebay",
-		"region_qld_rockhampton",
-		"region_qld_mackay",
-		"region_qld_townsville",
-		"region_qld_cairns",
-		"region_sa_adelaide",
-		"region_sa_regional",
-		"region_wa_perth",
-		"region_wa_regional_wa",
-		"region_tas_hobart",
-		"region_tas_launceston",
-	);
-	my $triplets;
-    my @fvtriplets;
-	my $data;
-		
-	my $url = "https://fvau-api-prod.switch.tv/content/v1/channels/region/" . $region . "?limit=100&offset=0&include_related=1&expand_related=full&related_entity_types=images";
-	my $res = geturl($ua,$url);
-	die("Unable to connect to FreeView (fvregion).\n") if (!$res->is_success);
-	$data = $res->content;
-	my $tmpchanneldata = JSON->new->relaxed(1)->allow_nonref(1)->decode($data);
-	$tmpchanneldata = $tmpchanneldata->{data};
-	for (my $count = 0; $count < @$tmpchanneldata; $count++)
-	{
-		my $tmptriplet = $tmpchanneldata->[$count]->{'dvb_triplet'};
-		$tmptriplet =~ s/([0-9]+)/0x$1/g;
-		$tmptriplet =~ s/:/\./g;
-		$fvtriplets[$count]->{triplet} = $tmptriplet;
-		$fvtriplets[$count]->{lcn} = $tmpchanneldata->[$count]->{'lcn'};
-		#$fvtriplets[$count]->{id} = $tmpchanneldata->[$count]->{'lcn'}.".epg.com.au";
-		$fvtriplets[$count]->{name} = $tmpchanneldata->[$count]->{'channel_name'};
-		$fvtriplets[$count]->{icon} = $tmpchanneldata->[$count]->{related}->{images}[0]->{url};
-    }
-	return @fvtriplets;
-}
+	my ($data, $duplicate_channels, $region) = @_;
+	my @combined_data;
+	my $found = 0;
 
-sub get_missing_channels_epg
-{
-	my ($fv_channels, $ttv_channels, $numdays) = @_;
-	my @combined_channels;
-	my $missing_triplets = "";
-	for (my $fv_count = 0; $fv_count < @$fv_channels; $fv_count++)
+	for (my $count = 0; $count < @$data; $count++)
 	{
-		my $lcnfound = 0;
-		for (my $ttv_count = 0; $ttv_count < @$ttv_channels; $ttv_count++)
-		{			
-			if (@$fv_channels[$fv_count]->{lcn} eq @$ttv_channels[$ttv_count]->{lcn})
+		push(@combined_data, @$data[$count]);
+		if (defined($duplicate_channels->{$region}->{@$data[$count]->{lcn}}) )
+		{
+			my $duplcn = $duplicate_channels->{$region}->{@$data[$count]->{lcn}};
+			for (my $datacounter = 0; $datacounter < @$data; $datacounter++)
 			{
-				$lcnfound = 1;
+				if ((@$data[$datacounter]->{lcn} eq $duplcn) and (!$found))
+				{
+					$found = 1;
+					warn("Skipping duplicating data found for LCN = $duplcn. Duplicate defintion found\n");
+				}
 			}
-		}
-		if (!$lcnfound)
-		{
-			print "Channel @$fv_channels[$fv_count]->{lcn} (@$fv_channels[$fv_count]->{name}) @$fv_channels[$fv_count]->{triplet} not found. Adding .....\n" if ($debuglevel);
-			$missing_triplets = $missing_triplets.@$fv_channels[$fv_count]->{triplet}.",";
-		}
-	}
-	$missing_triplets =~ s/,$//;
-	
-	#my ($TTV_channels, $TTV_epg) = TTV_Get_EPG_web($ua, 'triplets', $missing_triplets, $numdays);
-	my ($TTV_channels, $TTV_epg) = TTV_Get_EPG($ua, $apikey, 'triplets', $missing_triplets, $numdays) if ($missing_triplets ne "");
-	return $TTV_channels, $TTV_epg;
-}
-
-sub remove_exclude_channels
-{
-	my ($channels, $epg, $excludedchannels) = @_;
-	my @final_channels;
-	my @final_epg;
-	for (my $channelcount = 0; $channelcount < @$channels; $channelcount++)
-	{
-		next if ( grep( /^$channels->[$channelcount]->{lcn}$/, @$excludedchannels ) );
-		push(@final_channels, $channels->[$channelcount]);		
-	}
-	for (my $epgcount = 0; $epgcount < @$epg; $epgcount++)
-	{
-		next if ( grep( /^$epg->[$epgcount]->{lcn}$/, @$excludedchannels ) );
-		push(@final_epg, $epg->[$epgcount]);		
-	}	
-	return \@final_channels, \@final_epg;
-}
-
-sub add_extra_channels
-{
-	my ($extra_channels, $ttv_channels, $numdays) = @_;
-	my @combined_channels = ();
-	my @combined_epg = ();
-	my $missing_triplets = "";
-	my ($TTV_channels, $TTV_epg);
-	while (my ($lcn, $value) = each %$extra_channels)
-	{
-
-		my $lcnfound = 0;
-		for (my $ttv_count = 0; $ttv_count < @$ttv_channels; $ttv_count++)
-		{			
-			if ($lcn eq @$ttv_channels[$ttv_count]->{lcn})
+			if (!$found)
 			{
-				$lcnfound = 1;
-				print "Clash in adding extra channel $lcn.  Will not add this channel .......\n";
-			}
-		}
-		if (!$lcnfound)
-		{
-			print "Extra channel $lcn added\n" if ($debuglevel);
-			($TTV_channels, $TTV_epg) = TTV_Get_EPG($ua, $apikey, 'triplets', $value, $numdays, $lcn) ;
-			@combined_channels = ( @combined_channels, @$TTV_channels );
-			@combined_epg = ( @combined_epg, @$TTV_epg );
-			$missing_triplets = $missing_triplets.$value.",";
-		}
-	}
-	$missing_triplets =~ s/,$//;
-	
-	#my ($TTV_channels, $TTV_epg) = TTV_Get_EPG_web($ua, 'triplets', $missing_triplets, $numdays);
-	#my ($TTV_channels, $TTV_epg) = TTV_Get_EPG($ua, 'triplets', $missing_triplets, $numdays, $forcedlcn) if ($missing_triplets ne "");
-	#return $TTV_channels, $TTV_epg;
-	return \@combined_channels, \@combined_epg;
-}
-
-sub merge_triplets
-{
-	my ($fv_channels, $ttv_channels) = @_;
-	my @combined_channels;
-
-	for (my $fv_count = 0; $fv_count < @$fv_channels; $fv_count++)
-	#for (my $ttv_count = 0; $ttv_count < @$ttv_channels; $ttv_count++)
-	{
-		my $lcnfound = 0;
-		for (my $ttv_count = 0; $ttv_count < @$ttv_channels; $ttv_count++)
-		#for (my $fv_count = 0; $fv_count < @$fv_channels; $fv_count++)
-		{
-			if (@$fv_channels[$fv_count]->{lcn} eq @$ttv_channels[$ttv_count]->{lcn})
-			{
-				push(@combined_channels,@$ttv_channels[$ttv_count]);
-				#print "@$fv_channels[$fv_count]->{name} @$ttv_channels[$ttv_count]->{name}\n";
-				$lcnfound = 1;
-			}
-		}
-		if (!$lcnfound)
-		{
-			push(@combined_channels,@$fv_channels[$fv_count]);
-		}
-
-	}
-	return @combined_channels;
-}
-
-sub duplicate_channels
-{
-	use Storable qw(dclone); 
-
-	my ($channels, $duplicate_channels) = @_;
-	my @combined_channels;
-	for (my $chancount = 0; $chancount < @$channels; $chancount++)
-	{
-		push(@combined_channels,@$channels[$chancount]);
-		if (defined($duplicate_channels->{@$channels[$chancount]->{lcn}}) )
-		{
-			my @dup_channels = split(/,/,$duplicate_channels->{@$channels[$chancount]->{lcn}});
-			foreach my $duplcn (@dup_channels)
-			{
-				my $tmpchannel;
-				$tmpchannel = dclone(@$channels[$chancount]);
-
-				#$tmpchannel->{id} =  $duplcn.".epg.com.au";
-				$tmpchannel->{lcn} = $duplcn;
-				$tmpchannel->{epg_id} = $duplcn."-".$tmpchannel->{epg_id};
-				#$tmpchannel->{id} =  $duplicate_channels->{@$channels[$chancount]->{lcn}}.".epg.com.au";
-				#$tmpchannel->{lcn} = $duplicate_channels->{@$channels[$chancount]->{lcn}};
-
-				push(@combined_channels,$tmpchannel);
+				my $tmpdata;
+				$tmpdata = dclone(@$data[$count]);
+				$tmpdata->{lcn} = $duplcn;
+				$tmpdata->{epg_id} = $duplcn."-".$tmpdata->{epg_id};
+				push(@combined_data,$tmpdata);
 			}
 		}
 	}
-	return @combined_channels;
-}
-
-sub duplicate_epg
-{
-
-	my ($epg, $duplicate_channels) = @_;
-	my @duplicate_epg;
-	for (my $epgcount = 0; $epgcount < @$epg; $epgcount++)
-	{
-		push(@duplicate_epg,@$epg[$epgcount]);
-		#print "$duplicate_channels->{@$epg[$epgcount]->{lcn}}\n";
-		if (defined($duplicate_channels->{@$epg[$epgcount]->{lcn}}) )
-		{
-			my @dup_channels = split(/,/,$duplicate_channels->{@$epg[$epgcount]->{lcn}});
-			foreach my $duplcn (@dup_channels)
-			{
-				my $tmpchannel;
-				$tmpchannel = dclone(@$epg[$epgcount]);
-			
-				#$tmpchannel->{id} =  $duplcn.".epg.com.au";
-				$tmpchannel->{lcn} = $duplcn;
-				$tmpchannel->{epg_id} = $duplcn."-".$tmpchannel->{epg_id};
-				push(@duplicate_epg,$tmpchannel);
-			}
-		}
-	}
-	return @duplicate_epg;
-}
-
-sub get_combined_triplets
-{
-	my ($channels) = @_;
-	my $triplets = "";
-	for (my $tripcount = 0; $tripcount < @$channels; $tripcount++)
-	{
-		$triplets = $triplets.$channels->[$tripcount]->{triplet}."," if defined($channels->[$tripcount]->{triplet});
-	}
-	$triplets =~ s/,$//;
-	return $triplets;
+	return @combined_data;
 }
 
 sub ToBoolean
@@ -629,16 +526,12 @@ sub ToBoolean
 sub UsageAndHelp
 {
 	my ($debuglevel, $ua) = @_;
-	my $regioninfo = ABC_Get_Regions($debuglevel, $ua,'help');
 	my ($fetch_regioninfo, $dummy) = fetch_channels($debuglevel, $ua);
-	my $configurl = "https://raw.githubusercontent.com/markcs/xml_tv/markcs-testing/au_epg/configs/Melbourne_auepg.conf";
-	my $result = geturl($ua,$configurl);
+	my $configurl = "https://raw.githubusercontent.com/markcs/xml_tv/markcs-testing/au_epg/configs/epg.conf";
+	my $result = geturl($debuglevel, $ua, $configurl);
 	my $configdefinition = $result->content;
 	$configdefinition =~ s/\n/\n\t/g;
-	for (my $count = 0; $count < @$regioninfo; $count++)
-	{
-		#print "$regioninfo->[$count]->{fvregion}\n";
-	}
+
 	my $text = "==================================================\nUsage:\n"
                 . "\t$0 --config=<configuration filename> [--help|?] ]\n"
                 . "\t--config=<config filename>\n"
@@ -646,12 +539,6 @@ sub UsageAndHelp
                 . "\n\n";
 	print $text;
 	print "\t$configdefinition";
-	print "\n==================================================\n";
-	print "abc_region is one of the following text values:\n";
-	for (my $count = 0; $count < @$regioninfo; $count++)
-	{
-		print "\t$regioninfo->[$count]->{fvregion}\n";
-	}
 	print "\n==================================================\n";
 	print "fetch_region is one of the following values:\n";
 	for (my $count = 0; $count < @$fetch_regioninfo; $count++)
