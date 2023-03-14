@@ -10,9 +10,12 @@ if ($threading_ok)
         use threads::shared;
 }
 
-my $MAX_THREADS = 10;
+my $MAX_THREADS = 2;
 
+#use IO::Socket::INET6;
 use IO::Socket::SSL;
+use DBI;
+
 my $FURL_OK = eval 'use Furl; 1';
 if (!$FURL_OK)
 {
@@ -43,6 +46,8 @@ my %map = (
 	 '&' => 'and',
 );
 my $chars = join '', keys %map;
+
+my $apiwritekey = ''; # for a valid key you will need to write to michelle@sorbs.net.. otherwise !LEAVE IT BLANK!
 
 my %DUPLICATE_CHANNELS = ();
 my @DUPLICATED_CHANNELS = ();
@@ -424,10 +429,10 @@ move($FVTMPCACHEFILE, $FVCACHEFILE);
 warn("Starting to build the XML...\n") if ($VERBOSE);
 if (defined($message))
 {
-	$message = "http://xmltv.net - ".$message;
+	$message = "http://xmltv.net, cached by http://privacy.direct - ".$message;
 }
 else {
-	$message = "http://xmltv.net";
+	$message = "http://xmltv.net, cached by http://privacy.direct";
 }
 
 my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
@@ -509,29 +514,42 @@ sub url_fetch_thread
 	}
 	while (defined( my $airingid = $INQ->dequeue()))
 	{
-		my $url = "https://www.yourtv.com.au/api/airings/" . $airingid;
+		my $url;
+		$url = "http://privacy.direct/tvguide/airing/" . $airingid;
 		warn("Using $tua to fetch $url\n") if ($DEBUG);
 		print "." if ($VERBOSE);
 		my $res = $tua->get($url);
 		if (!$res->is_success)
 		{
-			warn("\n".threads->self()->tid(). ": Thread Fetch FAILED for: $url (" . $res->code . ")\n") if ($VERBOSE);
-			if ($res->code > 399 and $res->code < 500)
+			warn("\n".threads->self()->tid(). ": Thread Fetch Cache FAILED for: $url (" . $res->code . ")\n") if ($DEBUG);
+			$url = "https://www.yourtv.com.au/api/airings/" . $airingid;
+			warn("\n".threads->self()->tid(). ": falling back to: $url\n") if ($DEBUG);
+			warn("Using $tua to fetch $url\n") if ($DEBUG);
+			print "." if ($VERBOSE);
+			my $res = $tua->get($url);
+			if (!$res->is_success)
 			{
-				$OUTQ->enqueue("$airingid|FAILED");
-				sleep(31);
-			} elsif ($res->code > 499) {
-				$OUTQ->enqueue("$airingid|ERROR");
-				sleep(31);
+				warn("\n".threads->self()->tid(). ": Thread Fetch Original FAILED for: $url (" . $res->code . ")\n") if ($DEBUG);
+				if ($res->code > 399 and $res->code < 500)
+				{
+					$OUTQ->enqueue("$airingid|FAILED");
+					sleep(31);
+				} elsif ($res->code > 499) {
+					$OUTQ->enqueue("$airingid|ERROR");
+					sleep(31);
+				} else {
+					# shouldn't be reached
+					$OUTQ->enqueue("$airingid|UNKNOWN")
+				}
 			} else {
-				# shouldn't be reached
-				$OUTQ->enqueue("$airingid|UNKNOWN")
+				$OUTQ->enqueue("0|" . $airingid . "|" . $res->content);
+				warn(threads->self()->tid(). ": Thread Fetch Original SUCCESS for: $url\n") if ($DEBUG);
 			}
+			usleep(20000);
 		} else {
-			$OUTQ->enqueue($airingid . "|" . $res->content);
-			warn(threads->self()->tid(). ": Thread Fetch SUCCESS for: $url\n") if ($DEBUG);
+			$OUTQ->enqueue("1|" . $airingid . "|" . $res->content);
+			warn(threads->self()->tid(). ": Thread Fetch Cache SUCCESS for: $url\n") if ($DEBUG);
 		}
-		usleep(20000);
 	}
 }
 
@@ -560,13 +578,13 @@ sub getchannels
 		$channeldata[$channelcount]->{name} = $tmpchanneldata->[$count]->{description};
 		if (defined($YOURTVTOLCN->{$tmpchanneldata->[$count]->{number}}))
 		{			
-			$channeldata[$channelcount]->{id} = $YOURTVTOLCN->{$tmpchanneldata->[$count]->{number}}.".yourtv.com.au";
+			$channeldata[$channelcount]->{id} = 'Ch' . $YOURTVTOLCN->{$tmpchanneldata->[$count]->{number}};
 			$channeldata[$channelcount]->{lcn} = $YOURTVTOLCN->{$tmpchanneldata->[$count]->{number}};
 			warn("Changed YourTV channel $tmpchanneldata->[$count]->{number} to $YOURTVTOLCN->{$tmpchanneldata->[$count]->{number}} ...\n") if ($VERBOSE);
 		}
 		else
 		{
-			$channeldata[$channelcount]->{id} = $tmpchanneldata->[$count]->{number}.".yourtv.com.au";
+			$channeldata[$channelcount]->{id} = "Ch" . $tmpchanneldata->[$count]->{number};
 			$channeldata[$channelcount]->{lcn} = $tmpchanneldata->[$count]->{number};
 		}
 		my $channelIsDuped = 0;
@@ -591,7 +609,7 @@ sub getchannels
 				next if ($DUPLICATE_CHANNELS{$dchan} ne $tmpchanneldata->[$count]->{number});
 				$DUPECHANDATA[$dupe_count]->{tv_id} = $channeldata[$count]->{tv_id};
 				$DUPECHANDATA[$dupe_count]->{name} = $channeldata[$count]->{name};
-				$DUPECHANDATA[$dupe_count]->{id} = $dchan . ".yourtv.com.au";
+				$DUPECHANDATA[$dupe_count]->{id} = "Ch" . $dchan;
 				$DUPECHANDATA[$dupe_count]->{lcn} = $dchan;
 				$DUPECHANDATA[$dupe_count]->{icon} = $channeldata[$count]->{icon};
 				warn("Duplicated channel $channeldata[$count]->{name} -> $DUPECHANDATA[$dupe_count]->{id} ...\n") if ($VERBOSE);
@@ -639,6 +657,9 @@ sub getepg
 		my $tmpdata;
 		eval
 		{
+			#FIXME: Mark, are you sure you want to do this?
+			#       it will never fail the eval because of the '1;'
+			#       this means tmpdata could be left empty or corrupt
 			$tmpdata = JSON->new->relaxed(1)->allow_nonref(1)->decode($res->content);
 			1;
 		};
@@ -665,7 +686,7 @@ sub getepg
 					my $channelIsDuped = 0;
  					$channelIsDuped = $id if ( ( grep( /^$id$/, @DUPLICATED_CHANNELS ) ) );
 					my $blocks = $chandata->[$channelcount]->{blocks};
-					$id = $id.".yourtv.com.au";
+					$id = "Ch" . $id;
 					for (my $blockcount = 0; $blockcount < @$blocks; $blockcount++)
 					{
 						my $subblocks = $blocks->[$blockcount]->{shows};
@@ -726,8 +747,16 @@ sub getepg
 						# be in the right order when we get them back.  That said, because we will
 						# reuse these threads and queues on each loop we wait here to get back
 						# all the results before we continue.
-						my ($airing, $result) = split(/\|/, $OUTQ->dequeue(), 2);
-						warn("$airing = $result\n") if ($DEBUG);
+						my ($cached, $airing, $result) = split(/\|/, $OUTQ->dequeue(), 3);
+						warn(($cached ? "Cached: " : "Original: ") . "$airing = $result\n") if ($DEBUG);
+						if (!$cached && $apiwritekey ne "")
+						{
+							# ok we need to write this into the DB so that its there for future queries
+							# however we need to post the data to the API as we don't want every tom, dick
+							# and harry accessing the tables with write permission so we use API write
+							# keys to pass the data back with a POST to write.
+							post_airing_back_to_api($ua, "https://privacy.direct/tvguide/post/airing/", $airing, $result);
+						}
 						$thrdret{$airing} = $result;
 					}
 					if ($VERBOSE && $enqueued)
@@ -944,7 +973,7 @@ sub getepg
 									foreach my $dchan (sort keys %DUPLICATE_CHANNELS)
 									{
 										next if ($DUPLICATE_CHANNELS{$dchan} ne $channelIsDuped);
-										my $did = $dchan . ".yourtv.com.au";
+										my $did = "Ch" . $dchan;
 										$DUPEGUIDEDATA[$DUPES_COUNT] = clone($guidedata[$showcount]);
 										$DUPEGUIDEDATA[$DUPES_COUNT]->{id} = $did;
 										$DUPEGUIDEDATA[$DUPES_COUNT]->{channel} = $did;
@@ -1412,7 +1441,7 @@ sub ABCgetchannels
 		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
 		next if ( ( !( grep( /^$key$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 		$tmpdata[$count]->{name} = $ABCRADIO{$key}{name};
-		$tmpdata[$count]->{id} = $key.".yourtv.com.au";
+		$tmpdata[$count]->{id} = "Ch" . $key;
 		$tmpdata[$count]->{lcn} = $key;
 		$tmpdata[$count]->{icon} = $ABCRADIO{$key}{iconurl};
 		$count++;
@@ -1455,7 +1484,7 @@ sub ABCgetepg
 		{
 			for (my $count = 0; $count < @$tmpdata; $count++)
 			{
-				$tmpguidedata[$showcount]->{id} = $key.".yourtv.com.au";
+				$tmpguidedata[$showcount]->{id} = "Ch" . $key;
 				$tmpguidedata[$showcount]->{start} = $tmpdata->[$count]->{live}[0]->{start};				
 				if (defined($tmpdata->[$count]->{live}[1]) )
 				{
@@ -1521,7 +1550,7 @@ sub SBSgetchannels
 		next if ( ( grep( /^$key$/, @IGNORECHANNELS ) ) );
 		next if ( ( !( grep( /^$key$/, @INCLUDECHANNELS ) ) ) and ((@INCLUDECHANNELS > 0)));
 		$tmpdata[$count]->{name} = $SBSRADIO{$key}{name};
-		$tmpdata[$count]->{id} = $key.".yourtv.com.au";
+		$tmpdata[$count]->{id} = "Ch" . $key;
 		$tmpdata[$count]->{lcn} = $key;
 		$tmpdata[$count]->{icon} = $SBSRADIO{$key}{iconurl};
 		$count++;
@@ -1566,7 +1595,7 @@ sub SBSgetepg
 			my $count = 0;
 			for (my $count = 0; $count < @$tmpdata; $count++)
 			{
-				$tmpguidedata[$showcount]->{id} = $id.".yourtv.com.au";
+				$tmpguidedata[$showcount]->{id} = "Ch" . $id;
 				$tmpguidedata[$showcount]->{start} = $tmpdata->[$count]->{start};
 				$tmpguidedata[$showcount]->{start} =~ s/[-T:\s]//g;
 				$tmpguidedata[$showcount]->{start} =~ s/(\+)/ +/;
@@ -1610,6 +1639,40 @@ sub geturl
 		sleep(($retry*$retry)/5);
 	}
 	return $res;
+}
+
+sub post_airing_back_to_api
+{
+	my ($ua, $url, $airing, $data, $max_retries) = @_;
+	$max_retries = 3 if (!(defined($max_retries)));
+	my $res;
+	my $retry = 1;
+	my $success = 0;
+	my $calling_sub = (caller(1))[3];
+	while (($retry <= $max_retries) and (!$success)) 
+	{
+		$res = $ua->post($url . $airing, [ 'Authorization' => 'Basic ' . $apiwritekey, 'Content-type' => 'application/json', 'X-region-code' => $REGION ], $data);
+		if (!$res->is_success)
+		{
+			if ($res->code eq "401")
+			{
+				warn("($calling_sub) Unauthorized! Unable to connect to $url (you need a VALID API key from michelle\@sorbs.net)\n") if ($VERBOSE);
+				die "Invalid API write key $apiwritekey\nLeave it blank if you haven't been assigned a key!\n";
+			} else {
+				warn("($calling_sub) Try $retry: Unable to connect to $url (".$res->code.")\n") if ($VERBOSE);
+			}
+		}
+		else 
+		{
+			warn("($calling_sub) Try $retry: Success for $url...\n") if ((($VERBOSE) and ($retry > 1)) or ($DEBUG));
+			return $res;
+		}
+		$retry++;
+		sleep(($retry*$retry)/5);
+	}
+
+
+
 }
 
 sub ToBoolean
