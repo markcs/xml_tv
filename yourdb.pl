@@ -527,7 +527,7 @@ sub url_fetch_thread
 	while (defined( my $airingid = $INQ->dequeue()))
 	{
 		my $url;
-		$url = "http://privacy.direct/tvguide/airing/" . $airingid;
+		$url = "http://tvguide.privacy.direct/api/airing/" . $airingid;
 		warn("Using $tua to fetch $url\n") if ($DEBUG);
 		print "." if ($VERBOSE);
 		my $res = $tua->get($url);
@@ -767,7 +767,7 @@ sub getepg
 							# however we need to post the data to the API as we don't want every tom, dick
 							# and harry accessing the tables with write permission so we use API write
 							# keys to pass the data back with a POST to write.
-							post_airing_back_to_api($ua, "https://privacy.direct/tvguide/post/airing/", $airing, $result);
+							post_airing_back_to_api($ua, "https://tvguide.privacy.direct/api/post/airing/", $airing, $result);
 						}
 						$thrdret{$airing} = $result;
 					}
