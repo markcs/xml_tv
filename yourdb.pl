@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
+use Data::Dumper;
 
 my %thr = ();
 my $threading_ok = eval 'use threads; 1';
@@ -72,6 +73,7 @@ my $DUPES_COUNT = 0;
 my $STDOLD;
 my (%dbm_hash, %thrdret);
 my (%fvdbm_hash, %fvthrdret);
+my $output_prefix;
 local (*DBMRO, *DBMRW);
 
 my ($configfile, $DEBUG, $VERBOSE, $log, $pretty, $USEFREEVIEWICONS, $NUMDAYS, $ignorechannels, $includechannels, $extrachannels, $paytv, $hdtvchannels, $REGION, $outputfile, $fileformat, $message, $help) = (undef, 0, 0, undef, 0, 0, 7, undef, undef, undef, undef, 0, undef ,undef, 1, undef, undef);
@@ -85,6 +87,7 @@ GetOptions
 	'days=i'			=> \$NUMDAYS,
 	'region=s'			=> \$REGION,
 	'output=s'			=> \$outputfile,
+	'prefix=s'			=> \$output_prefix,
 	'ignore=s'			=> \$ignorechannels,
 	'include=s'			=> \$includechannels,
 	'fvicons'			=> \$USEFREEVIEWICONS,
@@ -185,6 +188,7 @@ if (defined($configfile)) {
 	$NUMDAYS = $Config->{main}->{days} if (defined($Config->{main}->{days}));
 	$REGION = $Config->{main}->{region} if (defined($Config->{main}->{region}));
 	$outputfile = $Config->{main}->{output} if (defined($Config->{main}->{output}));
+	$output_prefix = $Config->{main}->{prefix} if (defined($Config->{main}->{prefix}));
 	$ignorechannels = $Config->{main}->{ignore} if (defined($Config->{main}->{ignore}));
 	$includechannels = $Config->{main}->{include} if (defined($Config->{main}->{include}));
 	$USEFREEVIEWICONS = ToBoolean($Config->{main}->{fvicons}) if (defined($Config->{main}->{fvicons}));
@@ -252,6 +256,8 @@ $CACHEFILE = "yourtv-region_$REGION.db" if ($CACHEFILE eq "yourtv.db");
 
 my $validregion = 0;
 my @REGIONS = buildregions();
+my %REGIONMAP = map { $_->{id} => $_->{name} } @REGIONS;
+#warn(Dumper(\%REGIONMAP));
 for my $tmpregion ( @REGIONS )
 {
 	if (($tmpregion->{id} eq $REGION) and ($tmpregion->{type} ne "FTA"))
@@ -276,6 +282,12 @@ die(	  "\n"
 	. "\n\n"
    ) if (!$validregion); # (!defined($REGIONS->{$REGION}));
 
+if (defined($output_prefix))
+{
+	my $f = $REGIONMAP{$REGION};
+	$f =~ s/[_ \/\?\*\.]/_/g;
+	$outputfile = $output_prefix . "/" . $f . ".xml";
+}
 warn("\nOptions...\nregion=$REGION, output=$outputfile, days = $NUMDAYS, fvicons = $USEFREEVIEWICONS, Verbose = $VERBOSE, pretty = $pretty, \n") if ($VERBOSE);
 warn("extrachannels=$extrachannels, ") if ($VERBOSE and defined($extrachannels)) ;
 warn("paytv-region=$paytv,\n") if ($VERBOSE and defined($paytv));
@@ -780,6 +792,7 @@ sub getepg
 						{
 							my $showdata;
 							my $airing = $subblocks->[$airingcount]->{id};
+							next if (!defined $airing || !$airing);
 							if ($thrdret{$airing} eq "FAILED")
 							{
 								warn("\nUnable to connect to YourTV for https://www.yourtv.com.au/api/airings/$airing ... skipping  (".$res->{code}.")\n");
@@ -1385,6 +1398,7 @@ sub usage
 		. "\t--days=<days to collect>\tThis defaults to 7 days and can be no more than 7.\n"
 		. "\t--pretty\t\t\tOutput the XML with tabs and newlines to make human readable.\n"
 		. "\t--output <filename>\t\tWrite to the location and file specified instead of standard output.\n"
+		. "\t--prefix <path>\t\tWrite to the location in the prefix and use filename based on the region name (overrides --output).\n"
 		. "\t--fileformat\t\t\tUsed together with output filename. 1 = uncompressed xml only (default), 2 = gzipped xml only, 3 = both uncompressed xml and gzipped xml\n"
 		. "\t--ignore=<channel to ignore>\tA comma separated list of channel numbers to ignore. The channel number is matched against the lcn tag within the xml.\n"
 		. "\t--duplicates <orig>=<ch1>,<ch2>\tOption may be specified more than once, this will create a guide where different channels have the same data.\n"
