@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/12 18:47:48.857 </#FT> 
+# <!#FT> 2023/03/15 13:58:35.661 </#FT> 
 
 use strict;
 use warnings;
@@ -42,14 +42,14 @@ main:
 	$ua->default_header( 'Accept-Charset' => 'utf-8');
 	$ua->cookie_jar( {} );
 
-	my ($configfile, $debuglevel, $log, $pretty, $fetchtv_region, $numdays, $output, $help) = (undef, 0, undef, 1, undef, 7, undef, undef);
+	my ($configfile, $debuglevel, $log, $pretty, $fetchtv_region, $numdays, $output, $help) = (undef, 0, undef, 1, 0, 7, undef, undef);
 	GetOptions
 	(
 		'config=s'			=> \$configfile,
 		'debuglevel=s'		=> \$debuglevel,
 		'log=s'				=> \$log,
 		'pretty'			=> \$pretty,
-		'fetchtv_region=s'	=> \$fetchtv_region,
+		'region=s'			=> \$fetchtv_region,
 		'numdays=s'			=> \$numdays,
 		'output=s'			=> \$output,
 		'help'				=> \$help,
@@ -70,7 +70,7 @@ main:
 		$pretty = ToBoolean($Config->{main}->{pretty}) if (defined($Config->{main}->{pretty}));	
 		$numdays = $Config->{main}->{days} if (defined($Config->{main}->{days}));
 		$output = $Config->{main}->{output} if (defined($Config->{main}->{output}));
-		$fetchtv_region = $Config->{main}->{fetchtv_region} if (defined($Config->{main}->{fetchtv_region}));	
+		$fetchtv_region = $Config->{main}->{region} if (defined($Config->{main}->{region}));	
 		if ((defined($Config->{duplicate})) and ((keys %{$Config->{duplicate}}) > 0))
 		{
 			%duplicate_channels = %{$Config->{duplicate}};
@@ -134,13 +134,32 @@ main:
 		}
 	}
 
-	if ( (!defined($fetchtv_region)) or (!defined($output)) )
+	# check input options
+	if (not -w $output)
 	{
-		print "Incorrect options given\n";
-		UsageAndHelp($debuglevel, $fua);
+		die "Couldn't write to $output\n";
 	}
 
-	if (defined($log))
+	my $found = 0;
+	foreach my $region (@$fetch_regions)
+	{
+		if ($region->{region_number} eq $fetchtv_region)
+		{
+			$found = 1;
+			last;
+		}
+	}
+
+	if ( ($fetchtv_region eq 0) or (!defined($output)) or (!$found) )
+	{
+		print "Incorrect options given\n";
+		print "Region number $fetchtv_region not found\n" if (!$found);
+		UsageAndHelp($debuglevel, $fua);
+	}
+       
+	######################
+
+	if ( defined($log) and ($debuglevel > 0) )
 	{
 		my $logfile;
 		$log =~ s/\/$//;
@@ -421,7 +440,7 @@ sub printepg
 		${$XMLRef}->dataElement('title', sanitizeText($items->{title}));
 		${$XMLRef}->dataElement('sub-title', sanitizeText($items->{subtitle})) if (defined($items->{subtitle}));
 		${$XMLRef}->dataElement('desc', sanitizeText($items->{desc})) if (defined($items->{desc}));
-		${$XMLRef}->dataElement('category', sanitizeText($items->{category}));
+		${$XMLRef}->dataElement('category', sanitizeText($items->{category})) if (defined($items->{category}));
 		my $iconurl = $items->{icon};
 		if (defined $iconurl)
 		{
@@ -443,8 +462,9 @@ sub printepg
 		{
 			${$XMLRef}->dataElement('episode-num', "title/tt".$items->{imdb}, 'system' => 'imdb.com');
 		}
+
 		${$XMLRef}->dataElement('episode-num', $items->{originalairdate}, 'system' => 'original-air-date') if (defined($items->{originalairdate}));
-#		${$XMLRef}->emptyTag('previously-shown') if (defined($items->{previouslyshown}));
+
 		if (defined($items->{quality}))
 		{
 			${$XMLRef}->startTag('video');
@@ -534,13 +554,12 @@ sub UsageAndHelp
 
 	my $text = "==================================================\nUsage:\n"
                 . "\t$0 --config=<configuration filename> [--help|?] ]\n"
-                . "\t--config=<config filename>\n"
 				. "\n\n\tThe format of the configuration file is\n"
                 . "\n\n";
 	print $text;
 	print "\t$configdefinition";
 	print "\n==================================================\n";
-	print "fetch_region is one of the following values:\n";
+	print "<region> is one of the following values:\n";
 	for (my $count = 0; $count < @$fetch_regioninfo; $count++)
 	{
 		print "\t$fetch_regioninfo->[$count]->{region_number} = $fetch_regioninfo->[$count]->{region_name}, $fetch_regioninfo->[$count]->{state}\n";

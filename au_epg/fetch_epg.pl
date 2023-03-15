@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# <!#FT> 2023/03/12 18:50:18.185 </#FT> 
+# <!#FT> 2023/03/15 14:43:19.349 </#FT> 
 
 use strict;
 use warnings;
@@ -228,7 +228,7 @@ sub fetch_programlist
                             $guidedata->{$channel_number}->[$programcount]->{desc} = $tmpdata->{synopses}->{$programdata->[$program_fields->{synopsis_id}]};
                         }
                     }
-                    $guidedata->{$channel_number}->[$programcount]->{category} = $programdata->[$program_fields->{genre}];
+                    $guidedata->{$channel_number}->[$programcount]->{category} = $programdata->[$program_fields->{genre}] if (defined($programdata->[$program_fields->{genre}]) and ($programdata->[$program_fields->{genre}] ne ""));
                     my $startdt = DateTime->from_epoch( epoch => $guidedata->{$channel_number}->[$programcount]->{start_seconds}, time_zone => 'UTC' );
                     my $stopdt = DateTime->from_epoch( epoch => $guidedata->{$channel_number}->[$programcount]->{stop_seconds}, time_zone => 'UTC' );
                     $guidedata->{$channel_number}->[$programcount]->{start} = $startdt->ymd('').$startdt->hms('')." +0000";
