@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# <!#FT> 2023/03/20 12:27:19.787 </#FT> 
+# <!#FT> 2023/03/20 22:48:27.242 </#FT> 
 
 use strict;
 use warnings;
@@ -168,15 +168,17 @@ sub uniq { my %seen; grep !$seen{$_}++, @_ }
 
 sub fetch_programlist
 {
-    my ($debuglevel, $ua, $all_channels, $region, $numdays) = @_;
-    my $epg_list = fetch_region_epgids($all_channels, $region);
+    my ($debuglevel, $ua, $all_channels, $inputregions, $numdays) = @_;
+    my $epg_list = fetch_region_epgids($all_channels, $inputregions);
     print Dumper $epg_list if ($debuglevel >= 2);
     my @epg_list = uniq(@$epg_list);
     my $dt = DateTime->now();
     my $epoch_time_now = $dt->epoch;
     my $program_fields;
     my $guidedata;
+    my %channelprogramcounter;
     my $max_epgids = 50;
+    my $totalprogramcount = 0;
     my %fetch_rating_scale = (
                     '20' => 'G',
                     '40' => 'PG',
@@ -198,6 +200,7 @@ sub fetch_programlist
         
         for (my $blockcount = 0;$blockcount < $numdays*6 ; $blockcount++)
         {
+            print "Getting data for block $blockcount\n" if ($debuglevel >= 1);
             my $blocknum = int($epoch_time_now/86400*6) + $blockcount;
             my $block = "4-".$blocknum;           
             my $url = "https://www.fetchtv.com.au/v2/epg/programslist?channel_ids=".$epg_ids."&block=".$block."&count=2&extended=1";
@@ -218,7 +221,12 @@ sub fetch_programlist
             foreach my $channel_number (keys %{$tmpdata->{channels}} )
             {
                 my $channeldata = $tmpdata->{channels}{$channel_number};
-                my $programcount = 0;
+                if (!defined($channelprogramcounter{$channel_number}))
+                {
+                    $channelprogramcounter{$channel_number} = 0;
+                }
+                my $programcount = $channelprogramcounter{$channel_number};
+                
                 foreach my $programdata (@{$tmpdata->{channels}{$channel_number}})
                 {
                     $guidedata->{$channel_number}->[$programcount]->{title} = $programdata->[$program_fields->{title}];
@@ -266,10 +274,13 @@ sub fetch_programlist
                     }        
                     $guidedata->{$channel_number}->[$programcount]->{icon} = "https://www.fetchtv.com.au/v2/epg/program/".$programdata->[$program_fields->{program_id}]."/image";
                     $programcount++;
+                    $totalprogramcount++;
+                    $channelprogramcounter{$channel_number}++
                 }
+                print "(fetch_programlist) Got $programcount programs for $channel_number (total $totalprogramcount)\n" if ($debuglevel >= 1);
+
             }
             usleep (int(rand(250)) + 500);
-
         }
     }
     return $guidedata;
