@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# <!#FT> 2023/03/15 14:43:19.349 </#FT> 
+# <!#FT> 2023/03/20 12:27:19.787 </#FT> 
 
 use strict;
 use warnings;
@@ -52,7 +52,7 @@ sub fetch_channels
         {
             if ($source->{type} eq "dvb")
             {               
-               print "$channel_id = ".$tmpdata->{channels}{$channel_id}->{epg_id}." ".$tmpdata->{channels}{$channel_id}->{description}."\n" if ($debuglevel >=  2);           
+               #print "$channel_id = ".$tmpdata->{channels}{$channel_id}->{epg_id}." ".$tmpdata->{channels}{$channel_id}->{description}."\n" if ($debuglevel >=  2);           
                $channeldata[$channelcount]->{icon} = "https://www.fetchtv.com.au".$tmpdata->{channels}{$channel_id}->{image};
                $channeldata[$channelcount]->{lcn} = $source->{lcn};
                $channeldata[$channelcount]->{name} = $tmpdata->{channels}{$channel_id}->{description};
@@ -177,7 +177,13 @@ sub fetch_programlist
     my $program_fields;
     my $guidedata;
     my $max_epgids = 50;
-    
+    my %fetch_rating_scale = (
+                    '20' => 'G',
+                    '40' => 'PG',
+                    '60' => 'M',
+                    '65' => 'MA 15+',
+                    );
+
     for (my $epg_count = 0; $epg_count < scalar(@$epg_list); $epg_count=$epg_count+$max_epgids)
     {        
         my $epg_list_start = $epg_count;
@@ -247,10 +253,17 @@ sub fetch_programlist
                     {
                         $guidedata->{$channel_number}->[$programcount]->{season} = $startdt->year();
                     }
-    #            if ((defined($programdata->[$program_fields->{rating}])) and (($programdata->[$program_fields->{rating}]) ne ""))
-    #            {
-    #                $guidedata[$programcount]->{rating} = $programdata->[$program_fields->{rating}];
-    #            }        
+                    if ((defined($programdata->[$program_fields->{rating}])) and (($programdata->[$program_fields->{rating}]) ne "") and ($programdata->[$program_fields->{rating}] ne 0))
+                    {
+                        if (defined($fetch_rating_scale{$programdata->[$program_fields->{rating}]}))
+                        {
+                            $guidedata->{$channel_number}->[$programcount]->{rating} = $fetch_rating_scale{$programdata->[$program_fields->{rating}]};
+                        }
+                        else
+                        {
+                            warn("Rating $programdata->[$program_fields->{rating}] not defined for $programdata->[$program_fields->{title}]\n");
+                        }
+                    }        
                     $guidedata->{$channel_number}->[$programcount]->{icon} = "https://www.fetchtv.com.au/v2/epg/program/".$programdata->[$program_fields->{program_id}]."/image";
                     $programcount++;
                 }
