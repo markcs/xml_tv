@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/20 19:42:11.033 </#FT> 
+# <!#FT> 2023/03/20 20:17:32.954 </#FT> 
 
 use strict;
 use warnings;
@@ -518,22 +518,26 @@ sub duplicate
 		push(@combined_data, @$data[$count]);
 		if (defined($duplicate_channels->{$region}->{@$data[$count]->{lcn}}) )
 		{
-			my $duplcn = $duplicate_channels->{$region}->{@$data[$count]->{lcn}};
-			for (my $datacounter = 0; $datacounter < @$data; $datacounter++)
+			my @duplcns = split(/,/,$duplicate_channels->{$region}->{@$data[$count]->{lcn}});
+			foreach my $duplcn (@duplcns)
 			{
-				if ((@$data[$datacounter]->{lcn} eq $duplcn) and (!$found))
+				for (my $datacounter = 0; $datacounter < @$data; $datacounter++)
 				{
-					$found = 1;
-					warn("Skipping duplicating data found for LCN = $duplcn. Duplicate defintion found\n");
+					if ((@$data[$datacounter]->{lcn} eq $duplcn) and (!$found))
+					{
+						$found = 1;
+						warn("Skipping duplicating data found for LCN = $duplcn. Duplicate defintion found\n");
+					}
 				}
-			}
-			if (!$found)
-			{
-				my $tmpdata;
-				$tmpdata = dclone(@$data[$count]);
-				$tmpdata->{lcn} = $duplcn;
-				$tmpdata->{epg_id} = $duplcn."-".$tmpdata->{epg_id};
-				push(@combined_data,$tmpdata);
+			
+				if (!$found)
+				{
+					my $tmpdata;
+					$tmpdata = dclone(@$data[$count]);
+					$tmpdata->{lcn} = $duplcn;
+					$tmpdata->{epg_id} = $duplcn."-".$tmpdata->{epg_id};
+					push(@combined_data,$tmpdata);
+				}
 			}
 		}
 	}
