@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/15 13:58:35.661 </#FT> 
+# <!#FT> 2023/03/20 19:42:11.033 </#FT> 
 
 use strict;
 use warnings;
@@ -139,21 +139,40 @@ main:
 	{
 		die "Couldn't write to $output\n";
 	}
-
-	my $found = 0;
-	foreach my $region (@$fetch_regions)
+	
+	if ($fetchtv_region =~ /all/i) 
 	{
-		if ($region->{region_number} eq $fetchtv_region)
+		foreach my $region (@$fetch_regions)
 		{
-			$found = 1;
-			last;
+			push(@fetchtv_regions, $region->{region_number})
 		}
 	}
+	else
+	{
+		@fetchtv_regions = split(/,/,$fetchtv_region);
+	}
+
+	my $found;
+	foreach my $regionlist (@fetchtv_regions)
+	{
+		$found = 0;
+		foreach my $region (@$fetch_regions)		
+		{
+			if ($region->{region_number} eq $regionlist)
+			{
+				$found = 1;
+				last;
+			}
+		}
+		last if ($found eq 0);
+	}	
 
 	if ( ($fetchtv_region eq 0) or (!defined($output)) or (!$found) )
 	{
+		print "=====================================\n\n";
 		print "Incorrect options given\n";
-		print "Region number $fetchtv_region not found\n" if (!$found);
+		print "A region number was not found: $fetchtv_region \n" if (!$found);
+		print "\n\n=====================================\n\n";
 		UsageAndHelp($debuglevel, $fua);
 	}
        
@@ -184,18 +203,6 @@ main:
 
 	print Dumper $fetch_regions if ($debuglevel >= 2);
 	print Dumper $fetch_all_channels if ($debuglevel >= 2);
-
-	if ($fetchtv_region =~ /all/i) 
-	{
-		foreach my $region (@$fetch_regions)
-		{
-			push(@fetchtv_regions, $region->{region_number})
-		}
-	}
-	else
-	{
-		@fetchtv_regions = split(/,/,$fetchtv_region);
-	}	
 
 	my ($fetch_epgid_region_map, @fetch_channels) = fetch_region_channels($fetch_all_channels, \@fetchtv_regions);
 	print Dumper $fetch_epgid_region_map if ($debuglevel >= 2);
