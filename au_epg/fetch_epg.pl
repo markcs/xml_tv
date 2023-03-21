@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# <!#FT> 2023/03/20 22:48:27.242 </#FT> 
+# <!#FT> 2023/03/21 07:22:07.347 </#FT> 
 
 use strict;
 use warnings;
@@ -277,7 +277,7 @@ sub fetch_programlist
                     $totalprogramcount++;
                     $channelprogramcounter{$channel_number}++
                 }
-                print "(fetch_programlist) Got $programcount programs for $channel_number (total $totalprogramcount)\n" if ($debuglevel >= 1);
+                print "(fetch_programlist) Got $programcount programs for $channel_number (total $totalprogramcount)\n" if ($debuglevel >= 2);
 
             }
             usleep (int(rand(250)) + 500);
