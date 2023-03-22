@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/20 20:17:32.954 </#FT> 
+# <!#FT> 2023/03/22 17:45:23.577 </#FT> 
 
 use strict;
 use warnings;
@@ -225,6 +225,7 @@ main:
 	my $ABC_epg = ABC_Get_EPG($debuglevel, $ua, $abc_region_info, $numdays);
 
 	warn("Combining the two EPG's... (this may take some time)\n") if ($debuglevel >= 1);
+
 	my $combined_epg = Combine_epg($debuglevel, \@fetchtv_regions, \%mappedregions, $fetch_epg, $ABC_epg, $abc_id_region_map);
 	print Dumper $combined_epg if ($debuglevel >= 2);
 
@@ -259,72 +260,82 @@ sub Combine_epg
 {
 	my ($debuglevel, $fetch_regions, $region_mapping, $epg1, $epg2, $abc_mapping) = @_;
 	my @combinedepg;
-	my $epgcount = 0;
-	my $buffer = 600;
-	my $matchedprograms = 0;
 	my $unmatchedprograms = 0;
-	my @newepg;
+	my $matchedprograms = 0;
+	# create a hash table to store the titles and their indices
+	my %title_index;
+	foreach my $id1 (keys %$epg1) {
+    	foreach my $index1 (0..$#{$epg1->{$id1}}) {
+        	my $title1 = $epg1->{$id1}->[$index1]->{title};
+        	$title_index{$title1}->{$id1}->{$index1} = 1;
+    	}
+	}
 
-	foreach my $epg1_channelkey (keys %$epg1)
+	# iterate over the second array and check for matching titles
+	foreach my $id2 (keys %$epg2) 
 	{
-		for (my $ttv_show_count = 0; $ttv_show_count < @{$epg1->{$epg1_channelkey}}; $ttv_show_count++)
+    	foreach my $index2 (0..$#{$epg2->{$id2}}) 
 		{
+	        my $title2 = $epg2->{$id2}->[$index2]->{title};
 			my $programmatch = 0;
-			foreach my $epg2_regionkey (@{%$region_mapping{$epg1_channelkey}} )
-			{			
-				for (my $abc_show_count = 0; $abc_show_count < @{$epg2->{$epg2_regionkey}}; $abc_show_count++)
+        	LOOP: foreach my $title1 (keys %title_index) 
+			{
+    	        my $similarity = similarity($title1, $title2);
+	            if ($similarity >= 0.8) 
 				{
-				
-					my $shownamecomparison = similarity $epg1->{$epg1_channelkey}->[$ttv_show_count]->{title}, $epg2->{$epg2_regionkey}->[$abc_show_count]->{title};
-					if ((abs($epg1->{$epg1_channelkey}->[$ttv_show_count]->{start_seconds} - $epg2->{$epg2_regionkey}->[$abc_show_count]->{start_seconds}) < 900) ) #and ($shownamecomparison > 0.6) )
-					{ 
-						if ($shownamecomparison > 0.6)
+            	    # get the indices of the matching titles from the hash table
+        	        foreach my $id1 (keys %{$title_index{$title1}}) 
+					{
+    	                foreach my $index1 (keys %{$title_index{$title1}->{$id1}}) 
 						{
-							print "MATCHED (channel $epg1->{$epg1_channelkey}->[$ttv_show_count]->{epg_id} ) $epg1->{$epg1_channelkey}->[$ttv_show_count]->{title} eq $epg2->{$epg2_regionkey}->[$abc_show_count]->{title} ($shownamecomparison)\n" if ($debuglevel >= 2);
-							$epg1->{$epg1_channelkey}->[$ttv_show_count]->{repeat} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{repeat} if (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{repeat}));
-							$epg1->{$epg1_channelkey}->[$ttv_show_count]->{subtitle} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{subtitle} if (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{subtitle}));
-							$epg1->{$epg1_channelkey}->[$ttv_show_count]->{originalairdate} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{originalairdate} if (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{originalairdate}));
-							if ( (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{episode})) and (!defined($epg1->{$epg1_channelkey}->[$ttv_show_count]->{episode})))
-							{
-								$epg1->{$epg1_channelkey}->[$ttv_show_count]->{episode} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{episode};
-								print "\t added episode info\n" if ($debuglevel >= 2);
-								if (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{series}))
+	                        # do something with the matching titles
+							if ((abs($epg1->{$id1}->[$index1]->{start_seconds} - $epg2->{$id2}->[$index2]->{start_seconds}) < 900) )
+                        	{
+								print "MATCHED: $title1 (at index $index1 in $id1) and $title2 (at index $index2 in $id2) at $epg1->{$id1}->[$index1]->{start_seconds}\n" if ($debuglevel >= 2);
+								$epg1->{$id1}->[$index1]->{repeat} = $epg2->{$id2}->[$index2]->{repeat} if (defined($epg2->{$id2}->[$index2]->{repeat}));
+								$epg1->{$id1}->[$index1]->{subtitle} = $epg2->{$id2}->[$index2]->{subtitle} if (defined($epg2->{$id2}->[$index2]->{subtitle}));
+								$epg1->{$id1}->[$index1]->{originalairdate} = $epg2->{$id2}->[$index2]->{originalairdate} if (defined($epg2->{$id2}->[$index2]->{originalairdate}));
+								if ( (defined($epg2->{$id2}->[$index2]->{episode})) and (!defined($epg1->{$id1}->[$index1]->{episode})))
 								{
-									$epg1->{$epg1_channelkey}->[$ttv_show_count]->{season} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{season};
-									print "\t added season info\n" if ($debuglevel >= 2);
+									$epg1->{$id1}->[$index1]->{episode} = $epg2->{$id2}->[$index2]->{episode};
+									print "\t added episode info\n" if ($debuglevel >= 2);
+									if (defined($epg2->{$id2}->[$index2]->{series}))
+									{
+										$epg1->{$id1}->[$index1]->{season} = $epg2->{$id2}->[$index2]->{season};
+										print "\t added season info\n" if ($debuglevel >= 2);
+									}
+									else
+									{							
+										my $year = DateTime->from_epoch( epoch => $epg1->{$id1}->[$index1]->{start_seconds})->year;
+										$epg1->{$id1}->[$index1]->{season} = $year;
+										print "\t added season info for this year\n" if ($debuglevel >= 2);
+									}
+									if ( (defined($epg2->{$id2}->[$index2]->{rating})) and (!defined($epg1->{$id1}->[$index1]->{rating})))
+									{
+										$epg1->{$id1}->[$index1]->{rating} = $epg2->{$id2}->[$index2]->{rating};
+										print "\t added rating\n" if ($debuglevel >= 2);
+									}
 								}
-								else
-								{							
-									my $year = DateTime->from_epoch( epoch => $epg1->{$epg1_channelkey}->[$ttv_show_count]->{start_seconds})->year;
-									$epg1->{$epg1_channelkey}->[$ttv_show_count]->{season} = $year;
-									print "\t added season info for this year\n" if ($debuglevel >= 2);
-								}
-								if ( (defined($epg2->{$epg2_regionkey}->[$abc_show_count]->{rating})) and (!defined($epg1->{$epg1_channelkey}->[$ttv_show_count]->{rating})))
-								{
-									$epg1->{$epg1_channelkey}->[$ttv_show_count]->{rating} = $epg2->{$epg2_regionkey}->[$abc_show_count]->{rating};
-									print "\t added rating\n" if ($debuglevel >= 2);
-
-								}
+								$programmatch = 1;
+								$matchedprograms++;
+								last LOOP;
 							}
-							$programmatch = 1;														
-							$epg1->{$epg1_channelkey}->{epgmatched} = 1 if ($abc_show_count eq scalar(@{$epg2->{$epg2_regionkey}}));
-							$matchedprograms++;
-						}
-					}
-					next if ($programmatch); #added
-				}
-			}
+                    	}
+                	}
+            	}
+        	}
 			if (!$programmatch)
 			{
-				print "NOT MATCHED to ABC EPG -> channel $epg1->{$epg1_channelkey}->[$ttv_show_count]->{epg_id} show = $epg1->{$epg1_channelkey}->[$ttv_show_count]->{title} \t\tat $epg1->{$epg1_channelkey}->[$ttv_show_count]->{start}\n" if ($debuglevel >= 2);;
+				print "NOT MATCHED to ABC EPG -> channel $title2 (at index $index2 in $id2)\n" if ($debuglevel >= 2);
 				$unmatchedprograms++;
-			}
-		}
+			}			
+    	}
 		print "Update... $matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n" if ($debuglevel >= 1);
 	}
 	print "TOTAL.... $matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n" if ($debuglevel >= 1);
 	return $epg1;
 }
+
 
 sub geturl
 {
@@ -511,16 +522,16 @@ sub duplicate
 {
 	my ($data, $duplicate_channels, $region) = @_;
 	my @combined_data;
-	my $found = 0;
-
+	
 	for (my $count = 0; $count < @$data; $count++)
 	{
 		push(@combined_data, @$data[$count]);
 		if (defined($duplicate_channels->{$region}->{@$data[$count]->{lcn}}) )
 		{
-			my @duplcns = split(/,/,$duplicate_channels->{$region}->{@$data[$count]->{lcn}});
+			my @duplcns = split(/,/,$duplicate_channels->{$region}->{@$data[$count]->{lcn}});			
 			foreach my $duplcn (@duplcns)
 			{
+				my $found = 0;
 				for (my $datacounter = 0; $datacounter < @$data; $datacounter++)
 				{
 					if ((@$data[$datacounter]->{lcn} eq $duplcn) and (!$found))
@@ -529,7 +540,6 @@ sub duplicate
 						warn("Skipping duplicating data found for LCN = $duplcn. Duplicate defintion found\n");
 					}
 				}
-			
 				if (!$found)
 				{
 					my $tmpdata;
