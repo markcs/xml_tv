@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/22 17:45:23.577 </#FT> 
+# <!#FT> 2023/03/22 18:15:08.688 </#FT> 
 
 use strict;
 use warnings;
@@ -389,8 +389,8 @@ sub PrebuildXML
 		my @fetch_channels = fetch_single_region_channels($channels, $fetchtv_region);
 		my @fetch_epg = fetch_filter_epg(\@fetch_channels, $epg, $fetchtv_region);
 
-		my @duplicated_channels = duplicate(\@fetch_channels,$duplicated_channels, $fetchtv_region);
-		my @duplicated_epg = duplicate(\@fetch_epg,$duplicated_channels, $fetchtv_region);
+		my @duplicated_channels = duplicate($debuglevel, \@fetch_channels,$duplicated_channels, $fetchtv_region);
+		my @duplicated_epg = duplicate($debuglevel, \@fetch_epg,$duplicated_channels, $fetchtv_region);
 
 		$regionname =~ s/[\/\s]/_/g;
 		my($filename, $dirs, $suffix) = fileparse($outputfile, qr"\..[^.]*$");
@@ -520,7 +520,7 @@ sub sanitizeText
 
 sub duplicate
 {
-	my ($data, $duplicate_channels, $region) = @_;
+	my ($debuglevel, $data, $duplicate_channels, $region) = @_;
 	my @combined_data;
 	
 	for (my $count = 0; $count < @$data; $count++)
@@ -532,14 +532,12 @@ sub duplicate
 			foreach my $duplcn (@duplcns)
 			{
 				my $found = 0;
-				for (my $datacounter = 0; $datacounter < @$data; $datacounter++)
+				if ((@$data[$count]->{lcn} eq $duplcn) and (!$found))
 				{
-					if ((@$data[$datacounter]->{lcn} eq $duplcn) and (!$found))
-					{
-						$found = 1;
-						warn("Skipping duplicating data found for LCN = $duplcn. Duplicate defintion found\n");
-					}
-				}
+					$found = 1;						
+					warn("Skipping duplicating data found for LCN = $duplcn. Duplicate defintion found\n");
+				} 
+
 				if (!$found)
 				{
 					my $tmpdata;
