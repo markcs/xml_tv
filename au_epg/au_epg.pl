@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/22 18:15:08.688 </#FT> 
+# <!#FT> 2023/03/22 23:29:26.008 </#FT> 
 
 use strict;
 use warnings;
@@ -291,14 +291,14 @@ sub Combine_epg
 	                        # do something with the matching titles
 							if ((abs($epg1->{$id1}->[$index1]->{start_seconds} - $epg2->{$id2}->[$index2]->{start_seconds}) < 900) )
                         	{
-								print "MATCHED: $title1 (at index $index1 in $id1) and $title2 (at index $index2 in $id2) at $epg1->{$id1}->[$index1]->{start_seconds}\n" if ($debuglevel >= 2);
+								warn("MATCHED: $title1 (at index $index1 in $id1) and $title2 (at index $index2 in $id2) at $epg1->{$id1}->[$index1]->{start_seconds}\n") if ($debuglevel >= 2);
 								$epg1->{$id1}->[$index1]->{repeat} = $epg2->{$id2}->[$index2]->{repeat} if (defined($epg2->{$id2}->[$index2]->{repeat}));
 								$epg1->{$id1}->[$index1]->{subtitle} = $epg2->{$id2}->[$index2]->{subtitle} if (defined($epg2->{$id2}->[$index2]->{subtitle}));
 								$epg1->{$id1}->[$index1]->{originalairdate} = $epg2->{$id2}->[$index2]->{originalairdate} if (defined($epg2->{$id2}->[$index2]->{originalairdate}));
 								if ( (defined($epg2->{$id2}->[$index2]->{episode})) and (!defined($epg1->{$id1}->[$index1]->{episode})))
 								{
 									$epg1->{$id1}->[$index1]->{episode} = $epg2->{$id2}->[$index2]->{episode};
-									print "\t added episode info\n" if ($debuglevel >= 2);
+									warn ("\t added episode info\n") if ($debuglevel >= 2);
 									if (defined($epg2->{$id2}->[$index2]->{series}))
 									{
 										$epg1->{$id1}->[$index1]->{season} = $epg2->{$id2}->[$index2]->{season};
@@ -308,12 +308,12 @@ sub Combine_epg
 									{							
 										my $year = DateTime->from_epoch( epoch => $epg1->{$id1}->[$index1]->{start_seconds})->year;
 										$epg1->{$id1}->[$index1]->{season} = $year;
-										print "\t added season info for this year\n" if ($debuglevel >= 2);
+										warn ("\t added season info for this year\n") if ($debuglevel >= 2);
 									}
 									if ( (defined($epg2->{$id2}->[$index2]->{rating})) and (!defined($epg1->{$id1}->[$index1]->{rating})))
 									{
 										$epg1->{$id1}->[$index1]->{rating} = $epg2->{$id2}->[$index2]->{rating};
-										print "\t added rating\n" if ($debuglevel >= 2);
+										warn ( "\t added rating\n" ) if ($debuglevel >= 2);
 									}
 								}
 								$programmatch = 1;
@@ -326,13 +326,13 @@ sub Combine_epg
         	}
 			if (!$programmatch)
 			{
-				print "NOT MATCHED to ABC EPG -> channel $title2 (at index $index2 in $id2)\n" if ($debuglevel >= 2);
+				warn ("NOT MATCHED to ABC EPG -> channel $title2 (at index $index2 in $id2)\n") if ($debuglevel >= 2);
 				$unmatchedprograms++;
 			}			
     	}
-		print "Update... $matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n" if ($debuglevel >= 1);
+		warn ("Update... $matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n") if ($debuglevel >= 1);
 	}
-	print "TOTAL.... $matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n" if ($debuglevel >= 1);
+	warn ("TOTAL.... $matchedprograms MATCHED.  $unmatchedprograms UNMATCHED.\n") if ($debuglevel >= 1);
 	return $epg1;
 }
 
@@ -389,8 +389,9 @@ sub PrebuildXML
 		my @fetch_channels = fetch_single_region_channels($channels, $fetchtv_region);
 		my @fetch_epg = fetch_filter_epg(\@fetch_channels, $epg, $fetchtv_region);
 
-		my @duplicated_channels = duplicate($debuglevel, \@fetch_channels,$duplicated_channels, $fetchtv_region);
-		my @duplicated_epg = duplicate($debuglevel, \@fetch_epg,$duplicated_channels, $fetchtv_region);
+		warn("Duplicating channels and EPG\n") if ($debuglevel >= 1);
+		my $dup_channels = duplicate($debuglevel, \@fetch_channels, $duplicated_channels, $fetchtv_region);
+		my $dup_epg = duplicate($debuglevel, \@fetch_epg, $duplicated_channels, $fetchtv_region);
 
 		$regionname =~ s/[\/\s]/_/g;
 		my($filename, $dirs, $suffix) = fileparse($outputfile, qr"\..[^.]*$");
@@ -399,7 +400,7 @@ sub PrebuildXML
 		$outputfile = $dirs.$filename.$suffix;
 		warn("Setting outputfile to  $outputfile\n") if ($debuglevel >= 1);
 
-		buildXML($debuglevel, \@duplicated_channels, \@duplicated_epg, $identifier, $pretty, $outputfile);
+		buildXML($debuglevel, $dup_channels, $dup_epg, $identifier, $pretty, $outputfile);
 	}	
 }
 
@@ -522,34 +523,36 @@ sub duplicate
 {
 	my ($debuglevel, $data, $duplicate_channels, $region) = @_;
 	my @combined_data;
-	
-	for (my $count = 0; $count < @$data; $count++)
-	{
-		push(@combined_data, @$data[$count]);
-		if (defined($duplicate_channels->{$region}->{@$data[$count]->{lcn}}) )
-		{
-			my @duplcns = split(/,/,$duplicate_channels->{$region}->{@$data[$count]->{lcn}});			
+
+	foreach my $id1 (keys %$duplicate_channels) {
+		my $duplicates = $duplicate_channels->{$id1};
+		foreach my $lcn_to_find (keys %$duplicates) {
+			my @duplcns = split(/,/,$duplicates->{$lcn_to_find});
 			foreach my $duplcn (@duplcns)
 			{
-				my $found = 0;
-				if ((@$data[$count]->{lcn} eq $duplcn) and (!$found))
+				my @dupexists = grep { $_->{'lcn'} eq $duplcn } @{$data};
+				if (scalar(@dupexists) eq 0)
 				{
-					$found = 1;						
-					warn("Skipping duplicating data found for LCN = $duplcn. Duplicate defintion found\n");
-				} 
-
-				if (!$found)
+					my @matching_elements = grep { $_->{'lcn'} eq $lcn_to_find } @{$data};
+					warn("Duplicating lcn $lcn_to_find to $duplcn\n") if ($debuglevel >= 1);
+					foreach my $data_to_clone (@matching_elements)
+					{
+						my $newref = { %$data_to_clone};
+						$newref->{lcn} = $duplcn;
+						$newref->{epg_id} = $duplcn."-".$newref->{epg_id};
+						push @$data, $newref;
+			
+					}
+				}
+				else
 				{
-					my $tmpdata;
-					$tmpdata = dclone(@$data[$count]);
-					$tmpdata->{lcn} = $duplcn;
-					$tmpdata->{epg_id} = $duplcn."-".$tmpdata->{epg_id};
-					push(@combined_data,$tmpdata);
+					warn("Skipping duplicating data found for LCN = $duplcn. Duplicate defintion found or data already exists for $duplcn\n");
 				}
 			}
-		}
+
+    	}		
 	}
-	return @combined_data;
+	return $data;
 }
 
 sub ToBoolean

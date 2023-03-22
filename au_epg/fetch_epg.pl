@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# <!#FT> 2023/03/21 07:22:07.347 </#FT> 
+# <!#FT> 2023/03/22 23:30:09.412 </#FT> 
 
 use strict;
 use warnings;
@@ -52,7 +52,6 @@ sub fetch_channels
         {
             if ($source->{type} eq "dvb")
             {               
-               #print "$channel_id = ".$tmpdata->{channels}{$channel_id}->{epg_id}." ".$tmpdata->{channels}{$channel_id}->{description}."\n" if ($debuglevel >=  2);           
                $channeldata[$channelcount]->{icon} = "https://www.fetchtv.com.au".$tmpdata->{channels}{$channel_id}->{image};
                $channeldata[$channelcount]->{lcn} = $source->{lcn};
                $channeldata[$channelcount]->{name} = $tmpdata->{channels}{$channel_id}->{description};
@@ -184,8 +183,7 @@ sub fetch_programlist
                     '40' => 'PG',
                     '60' => 'M',
                     '65' => 'MA 15+',
-                    );
-
+                    );    
     for (my $epg_count = 0; $epg_count < scalar(@$epg_list); $epg_count=$epg_count+$max_epgids)
     {        
         my $epg_list_start = $epg_count;
@@ -199,8 +197,7 @@ sub fetch_programlist
         $epg_ids =~ s/,/%2C/g;
         
         for (my $blockcount = 0;$blockcount < $numdays*6 ; $blockcount++)
-        {
-            print "Getting data for block $blockcount\n" if ($debuglevel >= 1);
+        {            
             my $blocknum = int($epoch_time_now/86400*6) + $blockcount;
             my $block = "4-".$blocknum;           
             my $url = "https://www.fetchtv.com.au/v2/epg/programslist?channel_ids=".$epg_ids."&block=".$block."&count=2&extended=1";
@@ -277,7 +274,7 @@ sub fetch_programlist
                     $totalprogramcount++;
                     $channelprogramcounter{$channel_number}++
                 }
-                print "(fetch_programlist) Got $programcount programs for $channel_number (total $totalprogramcount)\n" if ($debuglevel >= 2);
+                warn "(fetch_programlist) Got $programcount programs for $channel_number (total $totalprogramcount)\n" if ($debuglevel >= 2);
 
             }
             usleep (int(rand(250)) + 500);
