@@ -7,6 +7,8 @@ assignees: markcs
 
 ---
 
+***When reporting an issue, please follow this template.  It makes any changes or fixes easier for everyone***
+
 **Describe the issue **
 A clear and concise description of what the issue is.
 
