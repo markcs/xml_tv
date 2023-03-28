@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/22 23:29:26.008 </#FT> 
+# <!#FT> 2023/03/28 12:18:04.039 </#FT> 
 
 use strict;
 use warnings;
@@ -71,35 +71,6 @@ main:
 		$numdays = $Config->{main}->{days} if (defined($Config->{main}->{days}));
 		$output = $Config->{main}->{output} if (defined($Config->{main}->{output}));
 		$fetchtv_region = $Config->{main}->{region} if (defined($Config->{main}->{region}));	
-		if ((defined($Config->{duplicate})) and ((keys %{$Config->{duplicate}}) > 0))
-		{
-			%duplicate_channels = %{$Config->{duplicate}};
-			while (my ($key, $value) = each %duplicate_channels)
-			{
-				if (defined($duplicated_channels->{$value}))
-				{
-					$duplicated_channels->{$value} = $duplicated_channels->{$value}.",".$key;	
-				}
-				else {
-					$duplicated_channels->{$value} = $key;
-				}
-			}
-		}
-		if ((defined($Config->{extrachannels})) and ((keys %{$Config->{extrachannels}}) > 0))
-		{
-			%extra_channels = %{$Config->{extrachannels}};
-			while (my ($key, $value) = each %extra_channels)
-			{
-				$value =~ s/(.*)\s+#.*/$1/;
-				$extra_channels->{$key} = $value;		
-			}
-		}
-		if (defined($Config->{main}->{excludechannels}))
-		{
-			my $excludechannels = $Config->{main}->{excludechannels};
-			@exclude_channels = split(/,/,$excludechannels);
-		}
-
 		if ($fetchtv_region =~ /all/i) 
 		{
 			foreach my $region (@$fetch_regions)
@@ -131,6 +102,50 @@ main:
 					}
 				}			
 			}
+			$sectionname = "$region-extrachannels";
+			if ((defined($Config->{$sectionname})) and ((keys %{$Config->{$sectionname}}) > 0))
+			{
+				%extra_channels = %{$Config->{$sectionname}};
+				while (my ($newlcn, $value) = each %extra_channels)
+				{
+					my @region_lcn = split(/-/, $value); #$region_lcn[0] = region, region_lcn[1] = lcn
+					my @channel_exists = grep { $_->{'lcn'} eq $newlcn } @{$fetch_all_channels};
+					my $found = 0;
+					foreach my $channel (@channel_exists)
+					{
+						#print Dumper $channel;
+						foreach my $channel_regions (@{$channel->{regions}})
+						{															
+							if ($channel_regions eq $region)
+							{
+								warn("Not adding extra LCN = $newlcn as it already exists for region number $region\n");
+								$found = 1;
+								last;
+							}
+						}
+					}
+					if (!$found) #channel doesn't exist in this region.  Add it from the other region as per config
+					{
+						for(my $count=0; $count < scalar(@$fetch_all_channels); $count++)
+						{
+							#if ($channel->{lcn} eq $region_lcn[1])
+							if ($fetch_all_channels->[$count]->{lcn} eq $region_lcn[1])
+							{
+							foreach my $channel_regions (@{$fetch_all_channels->[$count]->{regions}})							
+							{
+								if ($channel_regions eq $region_lcn[0])
+								{
+									push(@{$fetch_all_channels->[$count]->{regions}}, int($region));
+								}
+							}
+							}
+						}
+
+					}						
+
+				}			
+			}			
+
 		}
 	}
 
