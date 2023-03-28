@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/28 12:18:04.039 </#FT> 
+# <!#FT> 2023/03/28 15:29:19.602 </#FT> 
 
 use strict;
 use warnings;
@@ -561,7 +561,7 @@ sub duplicate
 				}
 				else
 				{
-					warn("Skipping duplicating data found for LCN = $duplcn. Duplicate defintion found or data already exists for $duplcn\n");
+					warn("Skipping duplicating data found for LCN = $duplcn. Duplicate definition found or data already exists for $duplcn\n");
 				}
 			}
 
