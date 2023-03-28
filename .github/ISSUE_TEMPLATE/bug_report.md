@@ -18,7 +18,7 @@ A clear and concise description of what the issue is.
 
 **Affected region / channel**
 - Please state what region you are in
-- Please list the channel numbers that are affected/missing
+- Please list the **channel names** AND **channel numbers (LCN)** that are affected/missing
 
 **Screenshots**
 - If applicable, add screenshots to help explain your problem.
