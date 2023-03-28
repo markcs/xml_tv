@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/28 15:29:19.602 </#FT> 
+# <!#FT> 2023/03/28 22:13:44.815 </#FT> 
 
 use strict;
 use warnings;
@@ -32,9 +32,8 @@ main:
 	my $duplicated_channels = ();
 	my %extra_channels = ();
 	my $extra_channels = ();
-	my @exclude_channels = ();
+	my %exclude_channels = ();
 	my $Config;
-	my @getregions;
 	my @fetchtv_regions; 
 
 	my $ua = LWP::UserAgent->new;
@@ -145,7 +144,28 @@ main:
 
 				}			
 			}			
-
+			$sectionname = "$region-excludechannels";
+			if ((defined($Config->{$sectionname})) and ((keys %{$Config->{$sectionname}}) > 0))
+			{
+				%exclude_channels = %{$Config->{$sectionname}};
+				while (my ($key, $channelids) = each %exclude_channels)
+				{
+					my @ids = split(/,/, $channelids); 
+					for(my $count=0; $count < scalar(@$fetch_all_channels); $count++)
+					{
+						if (grep(/$fetch_all_channels->[$count]->{epg_id}/, @ids))
+						{
+							for (my $regioncount = 0; $regioncount < scalar(@{$fetch_all_channels->[$count]->{regions}}); $regioncount++)
+							{
+								if ($region eq $fetch_all_channels->[$count]->{regions}->[$regioncount])
+								{
+									splice(@{$fetch_all_channels->[$count]->{regions}}, $regioncount, 1);
+								}
+							}
+						}						
+					}
+				}				
+			}
 		}
 	}
 
@@ -561,7 +581,7 @@ sub duplicate
 				}
 				else
 				{
-					warn("Skipping duplicating data found for LCN = $duplcn. Duplicate definition found or data already exists for $duplcn\n");
+					warn("Skipping duplicating data found for region $region, LCN = $duplcn. Duplicate definition found or data already exists\n");
 				}
 			}
 
