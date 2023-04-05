@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/03/28 22:13:44.815 </#FT> 
+# <!#FT> 2023/04/05 23:22:53.427 </#FT> 
 
 use strict;
 use warnings;
@@ -41,7 +41,7 @@ main:
 	$ua->default_header( 'Accept-Charset' => 'utf-8');
 	$ua->cookie_jar( {} );
 
-	my ($configfile, $debuglevel, $log, $pretty, $fetchtv_region, $numdays, $output, $help) = (undef, 0, undef, 1, 0, 7, undef, undef);
+	my ($configfile, $debuglevel, $log, $pretty, $fetchtv_region, $numdays, $output, $help) = (undef, 0, 0, 1, 0, 7, undef, undef);
 	GetOptions
 	(
 		'config=s'			=> \$configfile,
@@ -52,8 +52,7 @@ main:
 		'numdays=s'			=> \$numdays,
 		'output=s'			=> \$output,
 		'help'				=> \$help,
-
-	) or die ("Syntax Error!  Try $0 --help");
+	) or die("Syntax Error!  Try $0 --help");
 
 	my $fua = fetch_authenticate($ua);
 
@@ -168,7 +167,7 @@ main:
 			}
 		}
 	}
-
+	UsageAndHelp($debuglevel, $fua) if (!defined($output));
 	# check input options
 	if (not -w $output)
 	{
@@ -202,7 +201,7 @@ main:
 		last if ($found eq 0);
 	}	
 
-	if ( ($fetchtv_region eq 0) or (!defined($output)) or (!$found) )
+	if ( ($fetchtv_region eq 0) or (!$found) )
 	{
 		print "=====================================\n\n";
 		print "Incorrect options given\n";
@@ -265,6 +264,7 @@ main:
 	print Dumper $combined_epg if ($debuglevel >= 2);
 
 	PrebuildXML($debuglevel, \@fetchtv_regions, $fetch_regions, \@fetch_channels, $combined_epg, $duplicated_channels, $identifier, $pretty, $output);
+
 };
 
 sub merge_regions
@@ -345,12 +345,26 @@ sub Combine_epg
 										$epg1->{$id1}->[$index1]->{season} = $year;
 										warn ("\t added season info for this year\n") if ($debuglevel >= 2);
 									}
-									if ( (defined($epg2->{$id2}->[$index2]->{rating})) and (!defined($epg1->{$id1}->[$index1]->{rating})))
-									{
-										$epg1->{$id1}->[$index1]->{rating} = $epg2->{$id2}->[$index2]->{rating};
-										warn ( "\t added rating\n" ) if ($debuglevel >= 2);
-									}
 								}
+								if ( (defined($epg2->{$id2}->[$index2]->{rating})) and (!defined($epg1->{$id1}->[$index1]->{rating})))
+								{
+									$epg1->{$id1}->[$index1]->{rating} = $epg2->{$id2}->[$index2]->{rating};
+									warn ( "\t added rating\n" ) if ($debuglevel >= 2);
+								}
+								if  ($epg2->{$id2}->[$index2]->{show_type} !~ /movie/i)
+								{
+									my $startdt = DateTime->from_epoch( epoch => $epg1->{$id1}->[$index1]->{start_seconds}, time_zone => 'UTC' );
+									if (!defined($epg1->{$id1}->[$index1]->{season}))
+									{
+		                        		$epg1->{$id1}->[$index1]->{season} = $startdt->year();
+                         				warn ("\t added season info (showtype not movie)\n") if ($debuglevel >= 2);						
+									}
+									if (!defined($epg1->{$id1}->[$index1]->{episode}))
+									{
+		                        		$epg1->{$id1}->[$index1]->{episode} = sprintf("%0.2d%0.2d",$startdt->month(),$startdt->day());
+                         				warn ("\t added episode info (showtype not movie)\n") if ($debuglevel >= 2);								
+									}
+								}								
 								$programmatch = 1;
 								$matchedprograms++;
 								last LOOP;
@@ -436,7 +450,8 @@ sub PrebuildXML
 		warn("Setting outputfile to  $outputfile\n") if ($debuglevel >= 1);
 
 		buildXML($debuglevel, $dup_channels, $dup_epg, $identifier, $pretty, $outputfile);
-	}	
+	}
+	return;
 }
 
 sub buildXML
@@ -464,6 +479,7 @@ sub buildXML
 		print $fh_gzip $XML;
 		close $fh_gzip;
 	}
+	return;
 }
 
 sub printchannels
@@ -538,6 +554,7 @@ sub printepg
 		}
 		${$XMLRef}->endTag('programme');
 	}
+	return;
 }
 
 sub sanitizeText
@@ -557,7 +574,6 @@ sub sanitizeText
 sub duplicate
 {
 	my ($debuglevel, $data, $duplicate_channels, $region) = @_;
-	my @combined_data;
 
 	foreach my $id1 (keys %$duplicate_channels) {
 		my $duplicates = $duplicate_channels->{$id1};

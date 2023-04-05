@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# <!#FT> 2023/03/12 18:49:57.118 </#FT> 
+# <!#FT> 2023/04/05 23:16:41.785 </#FT> 
 
 use strict;
 use warnings;
@@ -146,7 +146,7 @@ sub ABC_Get_EPG
 					$guidedata->{$region}->[$programcount]->{channelname} = $epg[$epgdays]->{schedule}->[$schedule]->{channel};
 					$guidedata->{$region}->[$programcount]->{desc} = $tmplisting->{description};
 					$guidedata->{$region}->[$programcount]->{title} = $tmplisting->{title};
-					$guidedata->{$region}->[$programcount]->{repeat} = $tmplisting->{repeat};
+					$guidedata->{$region}->[$programcount]->{repeat} = $tmplisting->{repeat};				
 					my $end_seconds=0; my $start_seconds=0;
 					eval
 					{
@@ -165,13 +165,7 @@ sub ABC_Get_EPG
 					$guidedata->{$region}->[$programcount]->{start} = $startdt->ymd('').$startdt->hms('')." +0000";
 					$guidedata->{$region}->[$programcount]->{stop} = $enddt->ymd('').$enddt->hms('')." +0000";
 					$guidedata->{$region}->[$programcount]->{subtitle} = $tmplisting->{episode_title} if defined ($tmplisting->{episode_title});
-					my $originalairdate = $startdt;
-					$originalairdate->set_time_zone($abc_region_tz);
-					$guidedata->{$region}->[$programcount]->{originalairdate} = $originalairdate->ymd('-')." ".$originalairdate->hms(':');
-					if (($tmplisting->{show_type} =~ /program/i) and (!$tmplisting->{repeat}))
-					{
-						$guidedata[$programcount]->{$region}->[$programcount]->{originalairdate} = $startdt->ymd('-')." ".$startdt->hms(':');
-					}
+					$guidedata->{$region}->[$programcount]->{show_type} = $tmplisting->{show_type};
 
 					if (defined($tmplisting->{rating}))
 					{
