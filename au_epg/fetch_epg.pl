@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# <!#FT> 2023/04/05 23:23:51.681 </#FT> 
+# <!#FT> 2023/04/10 22:09:19.301 </#FT> 
 
 use strict;
 use warnings;
@@ -52,7 +52,7 @@ sub fetch_channels
         {
             if ($source->{type} eq "dvb")
             {               
-               $channeldata[$channelcount]->{icon} = "https://www.fetchtv.com.au".$tmpdata->{channels}{$channel_id}->{image};
+               $channeldata[$channelcount]->{icon} = 'https://xmltv.net/icons/auepg/'.$tmpdata->{channels}{$channel_id}->{epg_id}.'.png';
                $channeldata[$channelcount]->{lcn} = $source->{lcn};
                $channeldata[$channelcount]->{name} = $tmpdata->{channels}{$channel_id}->{description};
                $channeldata[$channelcount]->{regions} = $tmpdata->{channels}{$channel_id}->{regions};

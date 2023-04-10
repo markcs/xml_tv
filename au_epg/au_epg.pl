@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/04/05 23:22:53.427 </#FT> 
+# <!#FT> 2023/04/10 22:10:26.004 </#FT> 
 
 use strict;
 use warnings;
@@ -20,6 +20,10 @@ use Cwd;
 use File::Basename;
 use Term::ProgressBar;
 use IO::Compress::Gzip;
+use URL::Encode;
+
+our $auepg_version = "# <!#FT> 2023/04/10 22:10:26.004 </#FT>";
+$auepg_version =~ s/.*FT>\s(.*)\s<\/.*/$1/;
 
 main: 
 {
@@ -449,14 +453,14 @@ sub PrebuildXML
 		$outputfile = $dirs.$filename.$suffix;
 		warn("Setting outputfile to  $outputfile\n") if ($debuglevel >= 1);
 
-		buildXML($debuglevel, $dup_channels, $dup_epg, $identifier, $pretty, $outputfile);
+		buildXML($debuglevel, $dup_channels, $dup_epg, $fetchtv_region, $identifier, $pretty, $outputfile);
 	}
 	return;
 }
 
 sub buildXML
 {
-	my ($debuglevel, $channels, $epg, $identifier, $pretty, $outputfile) = @_;
+	my ($debuglevel, $channels, $epg, $region, $identifier, $pretty, $outputfile) = @_;
 	my $message = "http://xmltv.net";
 	my $XML = XML::Writer->new( OUTPUT => 'self', DATA_MODE => ($pretty ? 1 : 0), DATA_INDENT => ($pretty ? 8 : 0) );
 	$XML->xmlDecl("UTF-8");
@@ -464,7 +468,7 @@ sub buildXML
 	$XML->startTag('tv', 'source-info-name' => $message, 'generator-info-url' => "http://www.xmltv.org/");
 
 	warn("Building the channel list...\n") if ($debuglevel >= 1);
-	printchannels($channels, $identifier, \$XML);
+	printchannels($region, $channels, $identifier, \$XML);
 	printepg($epg, $identifier, \$XML);
 	warn("Finishing the XML...\n") if ($debuglevel >= 1);
 	$XML->endTag('tv');
@@ -484,16 +488,20 @@ sub buildXML
 
 sub printchannels
 {
-	my ($channels, $identifier, $XMLRef) = @_;
+	my ($region, $channels, $identifier, $XMLRef) = @_;
 	my $id;
 	foreach my $channel (@$channels)
 	{
-
-		$id = $channel->{epg_id}.$identifier;	
+		$id = $channel->{epg_id}.$identifier;
 		${$XMLRef}->startTag('channel', 'id' => $id);
 		${$XMLRef}->dataElement('display-name', $channel->{name});
 		${$XMLRef}->dataElement('lcn', $channel->{lcn});
-		${$XMLRef}->emptyTag('icon', 'src' => $channel->{icon}) if (defined($channel->{icon}));
+		if (defined($channel->{icon}))
+		{
+			my $uri = URI->new( $channel->{icon} );
+			$uri->query_form(region => $region, auepgversion => $auepg_version, xmldate => time);
+			${$XMLRef}->emptyTag('icon', 'src' => $uri);		
+		}
 		${$XMLRef}->endTag('channel');
 	}
 	return;
