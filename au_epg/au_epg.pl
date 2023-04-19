@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/04/10 22:10:26.004 </#FT> 
+# <!#FT> 2023/04/18 22:53:31.154 </#FT> 
 
 use strict;
 use warnings;
@@ -22,7 +22,7 @@ use Term::ProgressBar;
 use IO::Compress::Gzip;
 use URL::Encode;
 
-our $auepg_version = "# <!#FT> 2023/04/10 22:10:26.004 </#FT>";
+our $auepg_version = "# <!#FT> 2023/04/18 22:53:31.154 </#FT>";
 $auepg_version =~ s/.*FT>\s(.*)\s<\/.*/$1/;
 
 main: 
@@ -133,18 +133,20 @@ main:
 							#if ($channel->{lcn} eq $region_lcn[1])
 							if ($fetch_all_channels->[$count]->{lcn} eq $region_lcn[1])
 							{
-							foreach my $channel_regions (@{$fetch_all_channels->[$count]->{regions}})							
-							{
-								if ($channel_regions eq $region_lcn[0])
+								foreach my $channel_regions (@{$fetch_all_channels->[$count]->{regions}})							
 								{
-									push(@{$fetch_all_channels->[$count]->{regions}}, int($region));
+									if ($channel_regions eq $region_lcn[0])
+									{
+										my $tmpdata = $fetch_all_channels->[$count];
+										$tmpdata->{lcn} = $newlcn;
+										$tmpdata->{regions} = ();
+										push(@{$tmpdata->{regions}}, int($region));
+										push(@{$fetch_all_channels}, $tmpdata);
+									}
 								}
 							}
-							}
 						}
-
-					}						
-
+					}
 				}			
 			}			
 			$sectionname = "$region-excludechannels";
