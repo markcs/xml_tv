@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # xmltv.net Australian xmltv epg creater
-# <!#FT> 2023/04/18 22:53:31.154 </#FT> 
+# <!#FT> 2023/04/20 15:47:20.516 </#FT> 
 
 use strict;
 use warnings;
@@ -22,7 +22,7 @@ use Term::ProgressBar;
 use IO::Compress::Gzip;
 use URL::Encode;
 
-our $auepg_version = "# <!#FT> 2023/04/18 22:53:31.154 </#FT>";
+our $auepg_version = "# <!#FT> 2023/04/20 15:47:20.516 </#FT>";
 $auepg_version =~ s/.*FT>\s(.*)\s<\/.*/$1/;
 
 main: 
@@ -87,23 +87,30 @@ main:
 		}	
 		foreach my $region (@fetchtv_regions)
 		{
-			#duplicate channels section
-			my $sectionname = "$region-duplicate";
+			#exclude channels section			
+			my $sectionname = "$region-excludechannels";
 			if ((defined($Config->{$sectionname})) and ((keys %{$Config->{$sectionname}}) > 0))
 			{
-				%duplicate_channels = %{$Config->{$sectionname}};
-				while (my ($key, $value) = each %duplicate_channels)
+				%exclude_channels = %{$Config->{$sectionname}};
+				while (my ($key, $channelids) = each %exclude_channels)
 				{
-					if (defined($duplicated_channels->{$region}->{$value}))
+					my @ids = split(/,/, $channelids);
+					for(my $count=0; $count < scalar(@$fetch_all_channels); $count++)
 					{
-						$duplicated_channels->{$region}->{$value} = $duplicated_channels->{$region}->{$value}.",".$key;	
+						if (grep(/$fetch_all_channels->[$count]->{epg_id}/, @ids))
+						{
+							for (my $regioncount = 0; $regioncount < scalar(@{$fetch_all_channels->[$count]->{regions}}); $regioncount++)
+							{
+								if ($region eq $fetch_all_channels->[$count]->{regions}->[$regioncount])
+								{
+									splice(@{$fetch_all_channels->[$count]->{regions}}, $regioncount, 1);
+								}
+							}
+						}
 					}
-					else 
-					{
-						$duplicated_channels->{$region}->{$value} = $key;
-					}
-				}			
+				}
 			}
+			#extra channels section
 			$sectionname = "$region-extrachannels";
 			if ((defined($Config->{$sectionname})) and ((keys %{$Config->{$sectionname}}) > 0))
 			{
@@ -117,7 +124,7 @@ main:
 					{
 						#print Dumper $channel;
 						foreach my $channel_regions (@{$channel->{regions}})
-						{															
+						{
 							if ($channel_regions eq $region)
 							{
 								warn("Not adding extra LCN = $newlcn as it already exists for region number $region\n");
@@ -133,7 +140,7 @@ main:
 							#if ($channel->{lcn} eq $region_lcn[1])
 							if ($fetch_all_channels->[$count]->{lcn} eq $region_lcn[1])
 							{
-								foreach my $channel_regions (@{$fetch_all_channels->[$count]->{regions}})							
+								foreach my $channel_regions (@{$fetch_all_channels->[$count]->{regions}})
 								{
 									if ($channel_regions eq $region_lcn[0])
 									{
@@ -147,29 +154,24 @@ main:
 							}
 						}
 					}
-				}			
-			}			
-			$sectionname = "$region-excludechannels";
+				}
+			}
+			#duplicate channels section
+			$sectionname = "$region-duplicate";
 			if ((defined($Config->{$sectionname})) and ((keys %{$Config->{$sectionname}}) > 0))
 			{
-				%exclude_channels = %{$Config->{$sectionname}};
-				while (my ($key, $channelids) = each %exclude_channels)
+				%duplicate_channels = %{$Config->{$sectionname}};
+				while (my ($key, $value) = each %duplicate_channels)
 				{
-					my @ids = split(/,/, $channelids); 
-					for(my $count=0; $count < scalar(@$fetch_all_channels); $count++)
+					if (defined($duplicated_channels->{$region}->{$value}))
 					{
-						if (grep(/$fetch_all_channels->[$count]->{epg_id}/, @ids))
-						{
-							for (my $regioncount = 0; $regioncount < scalar(@{$fetch_all_channels->[$count]->{regions}}); $regioncount++)
-							{
-								if ($region eq $fetch_all_channels->[$count]->{regions}->[$regioncount])
-								{
-									splice(@{$fetch_all_channels->[$count]->{regions}}, $regioncount, 1);
-								}
-							}
-						}						
+						$duplicated_channels->{$region}->{$value} = $duplicated_channels->{$region}->{$value}.",".$key;
 					}
-				}				
+					else
+					{
+						$duplicated_channels->{$region}->{$value} = $key;
+					}
+				}
 			}
 		}
 	}
