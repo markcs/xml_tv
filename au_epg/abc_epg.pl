@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# <!#FT> 2023/04/05 23:16:41.785 </#FT> 
+# <!#FT> 2024/07/31 10:14:15.088 </#FT> 
 
 use strict;
 use warnings;
@@ -113,14 +113,14 @@ sub ABC_Get_EPG
 		for (my $day = 0; $day <= $numdays; $day++)
 		{
 			my $date = $dt->ymd;
-			my $url = "https://epg.abctv.net.au/processed/".$region."_".$date.".json";
+			my $url = "https://cdn.iview.abc.net.au/epg/processed/".$region."_".$date.".json";
 			my $res = geturl($debuglevel, $ua,$url,3);
 			my $data = $res->content;
 			if (!$res->is_success)
 			{
 				die("\n(getepg) FATAL: Unable to connect to ABC for $url (".$res->{code}.")\n");
 			}
-			my $content_encoding = $res->header ('Content-Encoding');
+			my $content_encoding = $res->header ('Content-Encoding') || 'NotSet';
 			if ($content_encoding eq 'gzip')
 			{
 				$data = gunzip ($res->content);
